@@ -31,27 +31,29 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == renderer.window.id() => {
-                // if !state.input(event) {
-                match event {
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
-                    WindowEvent::Resized(physical_size) => {
-                        // painter.on_window_resized(physical_size.width, physical_size.height)
+                let response = egui_pass.state.on_event(&egui_pass.context, event);
+
+                if !response.consumed {
+                    match event {
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        WindowEvent::Resized(physical_size) => {
+                            // painter.on_window_resized(physical_size.width, physical_size.height)
+                        }
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                            // painter.on_window_resized(new_inner_size.width, new_inner_size.height)
+                        }
+                        _ => {}
                     }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        // painter.on_window_resized(new_inner_size.width, new_inner_size.height)
-                    }
-                    _ => {}
                 }
-                // }
             }
             Event::RedrawRequested(window_id) if window_id == renderer.window.id() => {
                 puffin_egui::puffin::profile_function!();

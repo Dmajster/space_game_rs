@@ -1,12 +1,14 @@
 use super::{renderer::Renderer, RenderPass};
-use egui::{ClippedPrimitive, FullOutput, Pos2, RawInput, Rect};
+use egui::{ClippedPrimitive, FullOutput};
 use egui_wgpu::renderer::ScreenDescriptor;
+use egui_winit::State;
 use wgpu::{CommandEncoder, TextureView};
 
 pub struct EguiRenderPass {
     pub context: egui::Context,
+    pub state: State,
+
     renderer: egui_wgpu::Renderer,
-    raw_input: RawInput,
     clipped_primitives: Vec<ClippedPrimitive>,
     screen_descriptor: ScreenDescriptor,
     full_output: FullOutput,
@@ -18,18 +20,6 @@ impl EguiRenderPass {
             context: egui::Context::default(),
             renderer: egui_wgpu::Renderer::new(&renderer.device, renderer.surface_format, None, 1),
             clipped_primitives: vec![],
-            raw_input: RawInput {
-                screen_rect: Some(Rect {
-                    min: Pos2 { x: 0.0, y: 0.0 },
-                    max: Pos2 {
-                        x: renderer.window.inner_size().width as f32,
-                        y: renderer.window.inner_size().height as f32,
-                    },
-                }),
-                pixels_per_point: Some(renderer.window.scale_factor() as f32),
-                max_texture_side: Default::default(),
-                ..Default::default()
-            },
             screen_descriptor: ScreenDescriptor {
                 size_in_pixels: [
                     renderer.window.inner_size().width,
@@ -38,17 +28,25 @@ impl EguiRenderPass {
                 pixels_per_point: 1.0,
             },
             full_output: FullOutput::default(),
+            state: egui_winit::State::new(&renderer.window),
         }
     }
 }
 
 impl RenderPass for EguiRenderPass {
     fn prepare(&mut self, renderer: &Renderer) {
-        self.full_output = self.context.run(self.raw_input.clone(), |context| {
+        let raw_input = self.state.take_egui_input(&renderer.window);
+
+        self.full_output = self.context.run(raw_input, |context| {
             egui::SidePanel::new(egui::panel::Side::Left, "Profiler")
-                .exact_width(512.0)
                 .show(context, |ui| puffin_egui::profiler_ui(ui));
         });
+
+        self.state.handle_platform_output(
+            &renderer.window,
+            &self.context,
+            self.full_output.platform_output.clone(),
+        );
 
         self.clipped_primitives = self.context.tessellate(self.full_output.shapes.clone()); // creates triangles to paint
 
