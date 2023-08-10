@@ -1,5 +1,5 @@
 use super::{renderer::Renderer, RenderPass};
-use egui::{ClippedPrimitive, FullOutput};
+use egui::{ClippedPrimitive, FullOutput, Ui};
 use egui_wgpu::renderer::ScreenDescriptor;
 use egui_winit::State;
 use wgpu::{CommandEncoder, TextureView};
@@ -12,6 +12,8 @@ pub struct EguiRenderPass {
     clipped_primitives: Vec<ClippedPrimitive>,
     screen_descriptor: ScreenDescriptor,
     full_output: FullOutput,
+
+    window_master: WindowMaster,
 }
 
 impl EguiRenderPass {
@@ -29,6 +31,7 @@ impl EguiRenderPass {
             },
             full_output: FullOutput::default(),
             state: egui_winit::State::new(&renderer.window),
+            window_master: WindowMaster::new(),
         }
     }
 }
@@ -39,7 +42,7 @@ impl RenderPass for EguiRenderPass {
 
         self.full_output = self.context.run(raw_input, |context| {
             egui::SidePanel::new(egui::panel::Side::Left, "Profiler")
-                .show(context, |ui| puffin_egui::profiler_ui(ui));
+                .show(context, |ui| self.window_master.on_update(ui));
         });
 
         self.state.handle_platform_output(
@@ -94,5 +97,88 @@ impl RenderPass for EguiRenderPass {
         for id in &self.full_output.textures_delta.free {
             self.renderer.free_texture(id);
         }
+    }
+}
+
+struct WindowMaster {
+    tabs: Vec<Box<dyn GuiWindow>>,
+    selected_tab_index: usize,
+}
+
+impl WindowMaster {
+    pub fn new() -> Self {
+        Self {
+            tabs: vec![
+                Box::new(WindowImporter::default()),
+                Box::new(WindowProfiler::default()),
+            ],
+            selected_tab_index: 0,
+        }
+    }
+}
+
+impl GuiWindow for WindowMaster {
+    fn window_name(&self) -> &'static str {
+        "editor"
+    }
+
+    fn on_show(&mut self) {
+        self.selected_tab_index = 0;
+    }
+
+    fn on_hide(&mut self) {}
+
+    fn on_update(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            for (tab_index, tab) in self.tabs.iter().enumerate() {
+                if ui.button(tab.window_name()).clicked() {
+                    self.selected_tab_index = tab_index;
+                }
+            }
+        });
+
+        self.tabs[self.selected_tab_index].on_update(ui);
+    }
+}
+
+trait GuiWindow {
+    fn window_name(&self) -> &'static str;
+
+    fn on_show(&mut self);
+
+    fn on_hide(&mut self);
+
+    fn on_update(&mut self, ui: &mut Ui);
+}
+
+#[derive(Default)]
+struct WindowImporter {}
+
+impl GuiWindow for WindowImporter {
+    fn window_name(&self) -> &'static str {
+        "importer"
+    }
+
+    fn on_show(&mut self) {}
+
+    fn on_hide(&mut self) {}
+
+    fn on_update(&mut self, _ui: &mut Ui) {}
+}
+
+#[derive(Default)]
+struct WindowProfiler {}
+
+impl GuiWindow for WindowProfiler {
+    fn window_name(&self) -> &'static str {
+        "profiler"
+    }
+
+    fn on_show(&mut self) {}
+
+    fn on_hide(&mut self) {}
+
+    fn on_update(&mut self, ui: &mut Ui) {
+        puffin_egui::profiler_ui(ui)
     }
 }
