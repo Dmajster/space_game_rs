@@ -4,7 +4,6 @@ use rendering::{
 
 use std::iter;
 use winit::{
-    dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
@@ -13,10 +12,11 @@ use winit::{
 mod rendering;
 
 fn main() {
+    puffin_egui::puffin::set_scopes_on(true);
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Space game")
-        .with_inner_size(LogicalSize::new(1920.0, 1080.0))
+        .with_maximized(true)
         .build(&event_loop)
         .unwrap();
 
@@ -54,6 +54,8 @@ fn main() {
                 // }
             }
             Event::RedrawRequested(window_id) if window_id == renderer.window.id() => {
+                puffin_egui::puffin::profile_function!();
+                puffin_egui::puffin::GlobalProfiler::lock().new_frame();
                 opaque_pass.prepare(&renderer);
                 egui_pass.prepare(&renderer);
 

@@ -45,8 +45,9 @@ impl EguiRenderPass {
 impl RenderPass for EguiRenderPass {
     fn prepare(&mut self, renderer: &Renderer) {
         self.full_output = self.context.run(self.raw_input.clone(), |context| {
-            egui::SidePanel::new(egui::panel::Side::Left, "Debug")
-                .show(context, |ui| ui.label("test"));
+            egui::SidePanel::new(egui::panel::Side::Left, "Profiler")
+                .exact_width(512.0)
+                .show(context, |ui| puffin_egui::profiler_ui(ui));
         });
 
         self.clipped_primitives = self.context.tessellate(self.full_output.shapes.clone()); // creates triangles to paint

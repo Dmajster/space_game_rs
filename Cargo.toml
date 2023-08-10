@@ -1,14 +1,15 @@
 [package]
-name = "egui_winit_wgpu"
+name = "space_game"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 winit = "0.28"
 wgpu = "0.16"
 pollster = "0.3"
-
+#editor
 egui = "0.22"
-egui-wgpu = {version = "0.22", features = ["winit"]}
+egui-wgpu = { version = "0.22", features = ["winit", "puffin"] }
+egui-winit = { version = "0.22", features = ["puffin"] }
+puffin_egui = "0.22"
