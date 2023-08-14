@@ -11,9 +11,7 @@ impl OpaqueRenderPass {
 }
 
 impl RenderPass for OpaqueRenderPass {
-    fn prepare(&mut self, renderer: &super::renderer::Renderer) {
-
-    }
+    fn prepare(&mut self, renderer: &super::renderer::Renderer) {}
 
     fn render(
         &mut self,
@@ -21,7 +19,7 @@ impl RenderPass for OpaqueRenderPass {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) {
-        let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("opaque render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
@@ -35,7 +33,5 @@ impl RenderPass for OpaqueRenderPass {
         });
     }
 
-    fn cleanup(&mut self, renderer: &super::renderer::Renderer) {
-
-    }
+    fn cleanup(&mut self, renderer: &super::renderer::Renderer) {}
 }

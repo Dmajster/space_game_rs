@@ -1,10 +1,13 @@
+use std::collections::BTreeMap;
+
 use wgpu::{
-    Adapter, Device, Instance, Queue, Surface, SurfaceCapabilities, SurfaceConfiguration,
-    TextureFormat,
+    Adapter, BindGroup, BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor, Device,
+    Instance, PipelineLayout, PipelineLayoutDescriptor, Queue, RenderPipeline,
+    RenderPipelineDescriptor, Surface, SurfaceCapabilities, SurfaceConfiguration, TextureFormat,
 };
 use winit::window::Window;
 
-pub struct Renderer {
+pub struct Renderer<'renderer> {
     pub window: Window,
     pub instance: Instance,
     pub surface: Surface,
@@ -14,9 +17,16 @@ pub struct Renderer {
     pub adapter: Adapter,
     pub device: Device,
     pub queue: Queue,
+
+    // RENDER OBJECT CACHING. Has no reclaiming so it grows infinitely with each new variant...
+    // Might be a problem. Reclaiming would require tracking object usage.
+    bind_group_cache: BTreeMap<BindGroupDescriptor<'renderer>, BindGroup>,
+    bind_group_layout_cache: BTreeMap<BindGroupLayoutDescriptor<'renderer>, BindGroupLayout>,
+    pipeline_layout_cache: BTreeMap<PipelineLayoutDescriptor<'renderer>, PipelineLayout>,
+    render_pipeline_cache: BTreeMap<RenderPipelineDescriptor<'renderer>, RenderPipeline>,
 }
 
-impl Renderer {
+impl<'renderer> Renderer<'renderer> {
     pub fn new(window: Window) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12,
@@ -70,6 +80,11 @@ impl Renderer {
             adapter,
             device,
             queue,
+
+            bind_group_cache: Default::default(),
+            bind_group_layout_cache: Default::default(),
+            pipeline_layout_cache: Default::default(),
+            render_pipeline_cache: Default::default(),
         }
     }
 }
