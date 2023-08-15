@@ -1,5 +1,5 @@
 use rendering::{
-    egui_pass::EguiRenderPass, opaque_pass::OpaqueRenderPass, renderer::Renderer, RenderPass,
+    egui_pass::EguiRenderPass, opaque_pass::OpaqueRenderPass, renderer::Renderer, RenderPass
 };
 
 use std::iter;
@@ -10,6 +10,16 @@ use winit::{
 };
 
 mod rendering;
+
+pub struct Material {
+
+}
+
+
+
+
+
+
 
 fn main() {
     puffin_egui::puffin::set_scopes_on(true);
