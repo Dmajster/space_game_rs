@@ -79,7 +79,7 @@ fn main() {
             Vec2::new(0.0, 0.0),
             Vec2::new(0.0, 0.0),
         ],
-        indices: vec![2, 1, 0, 0, 3, 2],
+        indices: vec![0, 1, 2, 2, 3, 0],
     };
 
     let mesh_handle = renderer.add_mesh(mesh);

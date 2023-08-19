@@ -118,6 +118,9 @@ pub struct Renderer<'renderer> {
     pub meshes: Pool<RenderMesh>,
     pub buffers: Pool<wgpu::Buffer>,
 
+    pub depth_texture: wgpu::Texture,
+    pub depth_texture_view: wgpu::TextureView,
+
     // RENDER OBJECT CACHING. Has no reclaiming so it grows infinitely with each new variant...
     // Might be a problem. Reclaiming would require tracking object usage.
     bind_group_cache: BTreeMap<wgpu::BindGroupDescriptor<'renderer>, wgpu::BindGroup>,
@@ -173,7 +176,7 @@ impl<'renderer> Renderer<'renderer> {
         };
         surface.configure(&device, &surface_configuration);
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let global_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("renderer bind group layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
@@ -187,8 +190,30 @@ impl<'renderer> Renderer<'renderer> {
             }],
         });
 
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth texture"),
+            size: wgpu::Extent3d {
+                width: surface_configuration.width,
+                height: surface_configuration.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_TEXTURE_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let sun = Sun {
+            inverse_direction: Vec3::new(0.5, 2.0, 2.0),
+            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, -10.0, 20.0),
+        };
+
         let camera = Camera::new(
-            Mat4::look_at_rh(Vec3::new(10.0, 0.0, 0.0), Vec3::ZERO, Vec3::Y),
+            Mat4::look_at_rh(Vec3::new(0.0, 5.0, 5.0), Vec3::ZERO, Vec3::Y),
             Mat4::perspective_infinite_reverse_rh(
                 90.0f32.to_radians(),
                 window.inner_size().width as f32 / window.inner_size().height as f32,
@@ -205,19 +230,14 @@ impl<'renderer> Renderer<'renderer> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("renderer bind group"),
-            layout: &bind_group_layout,
+            layout: &global_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: camera_buffer.as_entire_binding(),
             }],
         });
-
-        let sun = Sun {
-            inverse_direction: Vec3::new(0.5, 2.0, 2.0),
-            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, -10.0, 20.0),
-        };
 
         Self {
             window,
@@ -231,14 +251,17 @@ impl<'renderer> Renderer<'renderer> {
             queue,
 
             scene_objects: Default::default(),
+
+            depth_texture,
+            depth_texture_view,
+
+            sun,
             camera,
             camera_uniform,
             camera_buffer,
 
-            sun,
-
-            bind_group_layout,
-            global_bind_group: bind_group,
+            bind_group_layout: global_bind_group_layout,
+            global_bind_group,
 
             bind_group_cache: Default::default(),
             bind_group_layout_cache: Default::default(),
@@ -248,13 +271,6 @@ impl<'renderer> Renderer<'renderer> {
             meshes: Default::default(),
             buffers: Default::default(),
         }
-    }
-
-    pub fn add_pass<P>(&mut self, pass: P)
-    where
-        P: RenderPass + 'static,
-    {
-        self.render_passes.push(Rc::new(RefCell::new(pass)));
     }
 
     pub fn prepare(&mut self) {
@@ -295,6 +311,13 @@ impl<'renderer> Renderer<'renderer> {
         for pass in &self.render_passes {
             pass.borrow_mut().cleanup(self)
         }
+    }
+
+    pub fn add_pass<P>(&mut self, pass: P)
+    where
+        P: RenderPass + 'static,
+    {
+        self.render_passes.push(Rc::new(RefCell::new(pass)));
     }
 
     pub fn add_mesh(&mut self, mesh: Mesh) -> Handle<RenderMesh> {
