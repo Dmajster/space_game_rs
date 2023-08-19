@@ -1,8 +1,8 @@
 use rendering::{
-    egui_pass::EguiRenderPass, opaque_pass::OpaqueRenderPass, renderer::Renderer, RenderPass,
+    egui_pass::EguiRenderPass, opaque_pass::OpaqueRenderPass, renderer::Renderer,
+    shadow_pass::ShadowRenderPass,
 };
 
-use std::iter;
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -20,10 +20,10 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let renderer = Renderer::new(window);
-
-    let mut egui_pass = EguiRenderPass::new(&renderer);
-    let mut opaque_pass = OpaqueRenderPass::new();
+    let mut renderer = Renderer::new(window);
+    renderer.add_pass(ShadowRenderPass::new(&renderer));
+    renderer.add_pass(OpaqueRenderPass::new());
+    renderer.add_pass(EguiRenderPass::new(&renderer));
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -31,56 +31,42 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == renderer.window.id() => {
-                let response = egui_pass.state.on_event(&egui_pass.context, event);
+                // let egui_pass = renderer.get_pass_mut::<EguiRenderPass>();
+                // let response = egui_pass.state.on_event(&egui_pass.context, event);
 
-                if !response.consumed {
-                    match event {
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state: ElementState::Pressed,
-                                    virtual_keycode: Some(VirtualKeyCode::Escape),
-                                    ..
-                                },
-                            ..
-                        } => *control_flow = ControlFlow::Exit,
-                        WindowEvent::Resized(physical_size) => {
-                            // painter.on_window_resized(physical_size.width, physical_size.height)
-                        }
-                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                            // painter.on_window_resized(new_inner_size.width, new_inner_size.height)
-                        }
-                        _ => {}
+                // if !response.consumed {
+                match event {
+                    WindowEvent::CloseRequested
+                    | WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(_physical_size) => {
+                        // painter.on_window_resized(physical_size.width, physical_size.height)
                     }
+                    WindowEvent::ScaleFactorChanged {
+                        new_inner_size: _, ..
+                    } => {
+                        // painter.on_window_resized(new_inner_size.width, new_inner_size.height)
+                    }
+                    _ => {}
                 }
+                // }
             }
             Event::RedrawRequested(window_id) if window_id == renderer.window.id() => {
                 puffin_egui::puffin::profile_function!();
                 puffin_egui::puffin::GlobalProfiler::lock().new_frame();
-                opaque_pass.prepare(&renderer);
-                egui_pass.prepare(&renderer);
 
-                let output = renderer.surface.get_current_texture().unwrap();
-                let view = output
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
+                renderer.prepare();
 
-                let mut encoder =
-                    renderer
-                        .device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("Render Encoder"),
-                        });
+                renderer.render();
 
-                opaque_pass.render(&renderer, &mut encoder, &view);
-                egui_pass.render(&renderer, &mut encoder, &view);
-
-                renderer.queue.submit(iter::once(encoder.finish()));
-                output.present();
-
-                opaque_pass.cleanup(&renderer);
-                egui_pass.cleanup(&renderer);
+                renderer.cleanup();
             }
             Event::MainEventsCleared => {
                 renderer.window.request_redraw();

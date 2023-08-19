@@ -4,8 +4,9 @@ use self::renderer::Renderer;
 
 pub mod renderer;
 
-pub mod egui_pass;
+pub mod shadow_pass;
 pub mod opaque_pass;
+pub mod egui_pass;
 
 pub trait RenderPass {
     fn prepare(&mut self, renderer: &Renderer);

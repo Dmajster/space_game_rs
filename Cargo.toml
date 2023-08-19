@@ -8,6 +8,8 @@ edition = "2021"
 winit = "0.28"
 wgpu = "0.16"
 pollster = "0.3"
+bytemuck = "1.13"
+glam = { version = "0.24", features = ["bytemuck"] }
 #editor
 egui = "0.22"
 egui-wgpu = { version = "0.22", features = ["winit", "puffin"] }

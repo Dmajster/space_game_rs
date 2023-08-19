@@ -591,6 +591,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c80984affa11d98d1b88b66ac8853f143217b399d3c74116778ff8fdb4ed2e"
 
 [[package]]
+name = "glam"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42218cb640844e3872cc3c153dc975229e080a6c4733b34709ef445610550226"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "glow"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1452,9 +1461,11 @@ dependencies = [
 name = "space_game"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "glam",
  "pollster",
  "puffin_egui",
  "wgpu",

@@ -1,4 +1,3 @@
-use wgpu::Color;
 
 use super::RenderPass;
 
@@ -11,11 +10,11 @@ impl OpaqueRenderPass {
 }
 
 impl RenderPass for OpaqueRenderPass {
-    fn prepare(&mut self, renderer: &super::renderer::Renderer) {}
+    fn prepare(&mut self, _renderer: &super::renderer::Renderer) {}
 
     fn render(
         &mut self,
-        renderer: &super::renderer::Renderer,
+        _renderer: &super::renderer::Renderer,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) {
@@ -25,7 +24,7 @@ impl RenderPass for OpaqueRenderPass {
                 view: &view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(Color::BLUE),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
                     store: true,
                 },
             })],
@@ -33,5 +32,5 @@ impl RenderPass for OpaqueRenderPass {
         });
     }
 
-    fn cleanup(&mut self, renderer: &super::renderer::Renderer) {}
+    fn cleanup(&mut self, _renderer: &super::renderer::Renderer) {}
 }
