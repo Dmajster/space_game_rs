@@ -1,20 +1,19 @@
-
-use super::RenderPass;
+use super::{renderer::Renderer, RenderPass};
 
 pub struct OpaqueRenderPass {}
 
 impl OpaqueRenderPass {
-    pub fn new() -> Self {
+    pub fn new(renderer: &Renderer) -> Self {
         Self {}
     }
 }
 
 impl RenderPass for OpaqueRenderPass {
-    fn prepare(&mut self, _renderer: &super::renderer::Renderer) {}
+    fn prepare(&mut self, _renderer: &Renderer) {}
 
     fn render(
         &mut self,
-        _renderer: &super::renderer::Renderer,
+        renderer: &Renderer,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
     ) {
@@ -30,7 +29,11 @@ impl RenderPass for OpaqueRenderPass {
             })],
             depth_stencil_attachment: None,
         });
+
+        render_pass.set_bind_group(0, &renderer.global_bind_group, &[]);
+
+        
     }
 
-    fn cleanup(&mut self, _renderer: &super::renderer::Renderer) {}
+    fn cleanup(&mut self, _renderer: &Renderer) {}
 }

@@ -1,16 +1,36 @@
+use crate::{Camera, Sun, Vertex};
+
 use super::{
-    renderer::{self, Renderer, Vertex},
+    renderer::{self, Renderer},
     RenderPass,
 };
+use glam::{Mat4, Vec3};
+use wgpu::util::DeviceExt;
 
 pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 1024;
 
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SunUniform {
+    mvp: Mat4,
+}
+
+impl SunUniform {
+    pub fn update(&mut self, camera: &Camera, sun: &Sun) {
+        let view = Mat4::look_at_rh(sun.inverse_direction, Vec3::ZERO, Vec3::Y);
+        self.mvp = sun.projection * view * camera.transform;
+    }
+}
+
 pub struct ShadowRenderPass {
-    // bind_group_layout: wgpu::BindGroupLayout,
-    // bind_group: wgpu::BindGroup,
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
     texture: wgpu::Texture,
     texture_view: wgpu::TextureView,
+
+    sun_uniform: SunUniform,
+    sun_buffer: wgpu::Buffer,
 }
 
 impl ShadowRenderPass {
@@ -32,30 +52,51 @@ impl ShadowRenderPass {
 
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // let bind_group_layout =
-        //     renderer
-        //         .device
-        //         .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //             label: Some("shadow pass bind group layout"),
-        //             entries: &[],
-        //         });
+        let bind_group_layout =
+            renderer
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("shadow pass bind group layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
 
-        // let bind_group = renderer
-        //     .device
-        //     .create_bind_group(&wgpu::BindGroupDescriptor {
-        //         label: Some("shadow pass bind group"),
-        //         layout: &bind_group_layout,
-        //         entries: &[],
-        //     });
+        let mut sun_uniform = SunUniform::default();
+        sun_uniform.update(&renderer.camera, &renderer.sun);
+
+        let sun_buffer = renderer
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("shadow pass bind group sun buffer"),
+                contents: bytemuck::cast_slice(&[sun_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+        let bind_group = renderer
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("shadow pass bind group"),
+                layout: &bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: sun_buffer.as_entire_binding(),
+                }],
+            });
 
         let pipeline_layout =
             renderer
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("shadow pass pipeline layout"),
-                    bind_group_layouts: &[
-                        &renderer.bind_group_layout
-                    ], //&bind_group_layout
+                    bind_group_layouts: &[&bind_group_layout], //&bind_group_layout
                     push_constant_ranges: &[],
                 });
 
@@ -104,25 +145,35 @@ impl ShadowRenderPass {
             });
 
         Self {
-            // bind_group_layout,
-            // bind_group,
+            bind_group_layout,
+            bind_group,
             pipeline,
             texture,
             texture_view,
+            sun_uniform,
+            sun_buffer,
         }
     }
 }
 
 impl RenderPass for ShadowRenderPass {
-    fn prepare(&mut self, _renderer: &super::renderer::Renderer) {}
+    fn prepare(&mut self, renderer: &Renderer) {
+        self.sun_uniform.update(&renderer.camera, &renderer.sun);
+
+        renderer.queue.write_buffer(
+            &self.sun_buffer,
+            0,
+            bytemuck::cast_slice(&[self.sun_uniform]),
+        );
+    }
 
     fn render(
         &mut self,
-        renderer: &super::renderer::Renderer,
+        renderer: &Renderer,
         encoder: &mut wgpu::CommandEncoder,
         _view: &wgpu::TextureView,
     ) {
-        let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("shadow pass"),
             color_attachments: &[],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -135,10 +186,24 @@ impl RenderPass for ShadowRenderPass {
             }),
         });
 
-        shadow_pass.set_pipeline(&self.pipeline);
-        shadow_pass.set_bind_group(0, &renderer.bind_group, &[]);
-        // shadow_pass.set_bind_group(1, &self.bind_group, &[]);
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+
+        for object in &renderer.scene_objects {
+            let mesh = renderer.meshes.get(&object.mesh_handle).unwrap();
+            let vertex_buffer = renderer.buffers.get(&mesh.vertex_buffer_handle).unwrap();
+            let index_buffer = renderer.buffers.get(&mesh.index_buffer_handle).unwrap();
+
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass
+                .set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(
+                mesh.index_offset as u32..(mesh.index_offset + mesh.index_count) as u32,
+                mesh.vertex_offset as i32,
+                0..1,
+            );
+        }
     }
 
-    fn cleanup(&mut self, _renderer: &super::renderer::Renderer) {}
+    fn cleanup(&mut self, _renderer: &Renderer) {}
 }

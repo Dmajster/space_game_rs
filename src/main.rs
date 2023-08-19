@@ -1,5 +1,7 @@
+use glam::{Mat4, Vec2, Vec3};
 use rendering::{
-    egui_pass::EguiRenderPass, opaque_pass::OpaqueRenderPass, renderer::Renderer,
+    opaque_pass::OpaqueRenderPass,
+    renderer::{RenderMesh, RenderSceneObject, Renderer},
     shadow_pass::ShadowRenderPass,
 };
 
@@ -10,6 +12,44 @@ use winit::{
 };
 
 mod rendering;
+
+pub struct Mesh {
+    pub positions: Vec<Vec3>,
+    pub normals: Vec<Vec3>,
+    pub uvs: Vec<Vec2>,
+    pub indices: Vec<u32>,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub uv: Vec2,
+}
+
+pub struct Sun {
+    pub inverse_direction: Vec3,
+    pub projection: Mat4,
+}
+
+pub struct Camera {
+    pub transform: Mat4,
+    pub projection: Mat4,
+}
+
+impl Camera {
+    fn new(transform: Mat4, projection: Mat4) -> Self {
+        Self {
+            transform,
+            projection,
+        }
+    }
+
+    fn build_view_projection_matrix(&self) -> Mat4 {
+        self.projection * self.transform
+    }
+}
 
 fn main() {
     puffin_egui::puffin::set_scopes_on(true);
@@ -22,8 +62,32 @@ fn main() {
 
     let mut renderer = Renderer::new(window);
     renderer.add_pass(ShadowRenderPass::new(&renderer));
-    renderer.add_pass(OpaqueRenderPass::new());
-    renderer.add_pass(EguiRenderPass::new(&renderer));
+    renderer.add_pass(OpaqueRenderPass::new(&renderer));
+    // renderer.add_pass(EguiRenderPass::new(&renderer));
+
+    let mesh = Mesh {
+        positions: vec![
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 0.0),
+        ],
+        normals: vec![Vec3::Y, Vec3::Y, Vec3::Y, Vec3::Y],
+        uvs: vec![
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 0.0),
+        ],
+        indices: vec![2, 1, 0, 0, 3, 2],
+    };
+
+    let mesh_handle = renderer.add_mesh(mesh);
+
+    renderer.scene_objects.push(RenderSceneObject {
+        transform: Mat4::IDENTITY,
+        mesh_handle,
+    });
 
     event_loop.run(move |event, _, control_flow| {
         match event {

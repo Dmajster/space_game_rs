@@ -1,20 +1,11 @@
-use glam::{Mat4, Vec2, Vec3};
-use std::{cell::RefCell, collections::BTreeMap, iter, rc::Rc};
+use glam::{Mat4, Vec3};
+use std::{cell::RefCell, collections::BTreeMap, iter, marker::PhantomData, rc::Rc};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
+use crate::{Camera, Mesh, Sun, Vertex};
+
 use super::RenderPass;
-
-pub struct Vertex {
-    pub position: Vec3,
-    pub normal: Vec3,
-    pub uv: Vec2,
-}
-
-pub struct Camera {
-    pub transform: Mat4,
-    pub projection: Mat4,
-}
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -28,23 +19,75 @@ impl CameraUniform {
     }
 }
 
-impl Camera {
-    fn new(transform: Mat4, projection: Mat4) -> Self {
-        Self {
-            transform,
-            projection,
-        }
-    }
+pub struct RenderSceneObject {
+    pub transform: Mat4, // Optimize to Mat4x3
+    pub mesh_handle: Handle<RenderMesh>,
+}
 
-    fn build_view_projection_matrix(&self) -> Mat4 {
-        self.projection * self.transform
+pub struct RenderMesh {
+    pub vertex_buffer_handle: Handle<wgpu::Buffer>,
+    pub vertex_offset: usize,
+    pub vertex_count: usize,
+    pub index_buffer_handle: Handle<wgpu::Buffer>,
+    pub index_offset: usize,
+    pub index_count: usize,
+}
+
+#[derive(Debug)]
+pub struct Handle<T> {
+    pub index: usize,
+    pub generation: usize,
+    _pd: PhantomData<T>,
+}
+
+impl<T> Clone for Handle<T> {
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index.clone(),
+            generation: self.generation.clone(),
+            _pd: self._pd.clone(),
+        }
     }
 }
 
-pub struct RenderObject {
-    pub transform: Mat4, // Optimize to Mat4x3
-    pub mesh_index: usize,
-    pub material_index: usize,
+impl<T> Copy for Handle<T> {}
+
+#[derive(Debug)]
+pub struct Pool<T> {
+    objects: Vec<T>,
+    generations: Vec<usize>,
+}
+
+impl<T> Default for Pool<T> {
+    fn default() -> Self {
+        Self {
+            objects: Default::default(),
+            generations: Default::default(),
+        }
+    }
+}
+
+impl<T> Pool<T> {
+    pub fn add(&mut self, object: T) -> Handle<T> {
+        let index = self.objects.len();
+        self.objects.push(object);
+        self.generations.push(0);
+
+        Handle {
+            index,
+            generation: 0,
+            _pd: PhantomData,
+        }
+    }
+
+    pub fn get(&self, handle: &Handle<T>) -> Option<&T> {
+        if handle.index < self.objects.len() && handle.generation == self.generations[handle.index]
+        {
+            Some(&self.objects[handle.index])
+        } else {
+            None
+        }
+    }
 }
 
 pub const DEPTH_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -63,14 +106,17 @@ pub struct Renderer<'renderer> {
     // Everything below this should be in it's own struct and not part of the Renderer base
     pub render_passes: Vec<Rc<RefCell<dyn RenderPass>>>,
 
-    pub bind_group_layout: wgpu::BindGroupLayout,
-    pub bind_group: wgpu::BindGroup,
+    pub sun: Sun,
+    pub camera: Camera,
 
-    camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub global_bind_group: wgpu::BindGroup,
 
-    render_objects: Vec<RenderObject>,
+    pub scene_objects: Vec<RenderSceneObject>,
+    pub meshes: Pool<RenderMesh>,
+    pub buffers: Pool<wgpu::Buffer>,
 
     // RENDER OBJECT CACHING. Has no reclaiming so it grows infinitely with each new variant...
     // Might be a problem. Reclaiming would require tracking object usage.
@@ -168,6 +214,11 @@ impl<'renderer> Renderer<'renderer> {
             }],
         });
 
+        let sun = Sun {
+            inverse_direction: Vec3::new(0.5, 2.0, 2.0),
+            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, -10.0, 20.0),
+        };
+
         Self {
             window,
             surface,
@@ -179,19 +230,23 @@ impl<'renderer> Renderer<'renderer> {
             device,
             queue,
 
-            render_objects: Default::default(),
+            scene_objects: Default::default(),
             camera,
             camera_uniform,
             camera_buffer,
 
+            sun,
+
             bind_group_layout,
-            bind_group,
+            global_bind_group: bind_group,
 
             bind_group_cache: Default::default(),
             bind_group_layout_cache: Default::default(),
             pipeline_layout_cache: Default::default(),
             render_pipeline_cache: Default::default(),
             render_passes: Default::default(),
+            meshes: Default::default(),
+            buffers: Default::default(),
         }
     }
 
@@ -240,5 +295,44 @@ impl<'renderer> Renderer<'renderer> {
         for pass in &self.render_passes {
             pass.borrow_mut().cleanup(self)
         }
+    }
+
+    pub fn add_mesh(&mut self, mesh: Mesh) -> Handle<RenderMesh> {
+        let vertex_data = mesh
+            .positions
+            .into_iter()
+            .zip(mesh.normals.into_iter())
+            .zip(mesh.uvs.into_iter())
+            .map(|((position, normal), uv)| Vertex {
+                position,
+                normal,
+                uv,
+            })
+            .collect::<Vec<_>>();
+
+        let vertex_buffer_handle = self.buffers.add(self.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("vertex buffer"),
+                contents: bytemuck::cast_slice(vertex_data.as_slice()),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
+
+        let index_buffer_handle = self.buffers.add(self.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("index buffer"),
+                contents: bytemuck::cast_slice(mesh.indices.as_slice()),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        ));
+
+        self.meshes.add(RenderMesh {
+            vertex_buffer_handle,
+            vertex_offset: 0,
+            vertex_count: vertex_data.len(),
+            index_buffer_handle,
+            index_offset: 0,
+            index_count: mesh.indices.len(),
+        })
     }
 }
