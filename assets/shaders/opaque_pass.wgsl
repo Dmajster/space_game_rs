@@ -1,5 +1,8 @@
 // Vertex shader
 
+const shadow_depth_texture_size: f32 = 2048.0;
+const shadow_comparison_bias = 0.007;
+
 struct Camera {
     view_proj: mat4x4<f32>,
 }
@@ -58,22 +61,29 @@ fn vs_main(
 // Fragment shader
 
 @group(1)@binding(1)
-var depth_sampler: sampler;
+var depth_sampler: sampler_comparison;
 @group(1) @binding(2)
-var shadow_depth_texture: texture_2d<f32>;
+var shadow_depth_texture: texture_depth_2d;
 
 @fragment
 fn fs_main(
     in: Fragment
 ) -> @location(0) vec4<f32> {
-    let bias = 0.007;
-    var visibility = 1.0; 
+    var visibility = 0.0;
+    let oneOverShadowDepthTextureSize = 1.0 / shadow_depth_texture_size;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let offset = vec2<f32>(vec2(x, y)) * oneOverShadowDepthTextureSize;
 
-    //TODO: https://webgpu.github.io/webgpu-samples/samples/shadowMapping#./fragment.wgsl
-
-    if textureSample(shadow_depth_texture, depth_sampler, in.shadow_position.xy).x > in.shadow_position.z + bias {
-        visibility = 0.5;
+            visibility += textureSampleCompare(
+                shadow_depth_texture,
+                depth_sampler,
+                in.shadow_position.xy + offset,
+                in.shadow_position.z + shadow_comparison_bias
+            );
+        }
     }
+    visibility /= 9.0;
 
     return vec4<f32>(visibility, visibility, visibility, 1.0);
 }

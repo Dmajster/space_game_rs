@@ -31,7 +31,7 @@ impl OpaqueRenderPass {
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                             count: None,
                         },
                         // Shadow depth texture
@@ -39,7 +39,7 @@ impl OpaqueRenderPass {
                             binding: 2,
                             visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                                sample_type: wgpu::TextureSampleType::Depth,
                                 view_dimension: wgpu::TextureViewDimension::D2,
                                 multisampled: false,
                             },

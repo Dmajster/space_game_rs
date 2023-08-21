@@ -6,7 +6,7 @@ use super::{
 };
 use glam::{Mat4, Vec3};
 
-pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 1024;
+pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 2048;
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
