@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Quat, Vec2, Vec3};
 use rendering::{
     opaque_pass::OpaqueRenderPass,
     renderer::{RenderMesh, RenderSceneObject, Renderer},
@@ -18,14 +18,6 @@ pub struct Mesh {
     pub normals: Vec<Vec3>,
     pub uvs: Vec<Vec2>,
     pub indices: Vec<u32>,
-}
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    pub position: Vec3,
-    pub normal: Vec3,
-    pub uv: Vec2,
 }
 
 pub struct Sun {
@@ -61,7 +53,8 @@ fn main() {
         .unwrap();
 
     let mut renderer = Renderer::new(window);
-    renderer.add_pass(ShadowRenderPass::new(&renderer));
+    let shadow_pass = ShadowRenderPass::new(&mut renderer);
+    renderer.add_pass(shadow_pass);
     renderer.add_pass(OpaqueRenderPass::new(&renderer));
     // renderer.add_pass(EguiRenderPass::new(&renderer));
 
@@ -85,7 +78,19 @@ fn main() {
     let mesh_handle = renderer.add_mesh(mesh);
 
     renderer.scene_objects.push(RenderSceneObject {
-        transform: Mat4::IDENTITY,
+        transform: Mat4::from_scale_rotation_translation(
+            Vec3::new(5.0, 5.0, 5.0),
+            Quat::IDENTITY,
+            Vec3::new(-2.5, 0.0, -2.5),
+        ),
+        mesh_handle,
+    });
+    renderer.scene_objects.push(RenderSceneObject {
+        transform: Mat4::from_scale_rotation_translation(
+            Vec3::new(1.0, 1.0, 1.0),
+            Quat::IDENTITY,
+            Vec3::new(-0.5, 1.0, -0.5),
+        ),
         mesh_handle,
     });
 

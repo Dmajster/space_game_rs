@@ -1,11 +1,10 @@
-use crate::{Camera, Sun, Vertex};
+use crate::{Camera, Sun};
 
 use super::{
-    renderer::{self, Renderer},
+    renderer::{self, RenderInstance, Renderer, Vertex},
     RenderPass,
 };
 use glam::{Mat4, Vec3};
-use wgpu::util::DeviceExt;
 
 pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 1024;
 
@@ -18,23 +17,18 @@ pub struct SunUniform {
 impl SunUniform {
     pub fn update(&mut self, camera: &Camera, sun: &Sun) {
         let view = Mat4::look_at_rh(sun.inverse_direction, Vec3::ZERO, Vec3::Y);
-        self.mvp = sun.projection * view * camera.transform;
+        self.mvp = sun.projection * view;
     }
 }
 
 pub struct ShadowRenderPass {
-    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
-    texture: wgpu::Texture,
     texture_view: wgpu::TextureView,
-
-    sun_uniform: SunUniform,
-    sun_buffer: wgpu::Buffer,
 }
 
 impl ShadowRenderPass {
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(renderer: &mut Renderer) -> Self {
         let texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow pass texture"),
             size: wgpu::Extent3d {
@@ -50,7 +44,15 @@ impl ShadowRenderPass {
             view_formats: &[],
         });
 
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        renderer
+            .render_pass_resources
+            .insert("shadow depth", texture);
+
+        let texture_view = renderer
+            .render_pass_resources
+            .get("shadow depth")
+            .unwrap()
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group_layout =
             renderer
@@ -69,17 +71,6 @@ impl ShadowRenderPass {
                     }],
                 });
 
-        let mut sun_uniform = SunUniform::default();
-        sun_uniform.update(&renderer.camera, &renderer.sun);
-
-        let sun_buffer = renderer
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("shadow pass bind group sun buffer"),
-                contents: bytemuck::cast_slice(&[sun_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
-
         let bind_group = renderer
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -87,7 +78,7 @@ impl ShadowRenderPass {
                 layout: &bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: sun_buffer.as_entire_binding(),
+                    resource: renderer.sun_buffer.as_entire_binding(),
                 }],
             });
 
@@ -117,10 +108,18 @@ impl ShadowRenderPass {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: "vs_main",
-                    buffers: &[wgpu::VertexBufferLayout {
+                    buffers: &[
+                    // Vertex
+                    wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
+                    },
+                    // Instance
+                    wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<RenderInstance>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &wgpu::vertex_attr_array![5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8=> Float32x4],
                     }],
                 },
                 primitive: wgpu::PrimitiveState {
@@ -145,27 +144,15 @@ impl ShadowRenderPass {
             });
 
         Self {
-            bind_group_layout,
             bind_group,
             pipeline,
-            texture,
             texture_view,
-            sun_uniform,
-            sun_buffer,
         }
     }
 }
 
 impl RenderPass for ShadowRenderPass {
-    fn prepare(&mut self, renderer: &Renderer) {
-        self.sun_uniform.update(&renderer.camera, &renderer.sun);
-
-        renderer.queue.write_buffer(
-            &self.sun_buffer,
-            0,
-            bytemuck::cast_slice(&[self.sun_uniform]),
-        );
-    }
+    fn prepare(&mut self, renderer: &Renderer) {}
 
     fn render(
         &mut self,
@@ -188,19 +175,25 @@ impl RenderPass for ShadowRenderPass {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
 
-        for object in &renderer.scene_objects {
+        for (index, object) in renderer.scene_objects.iter().enumerate() {
             let mesh = renderer.meshes.get(&object.mesh_handle).unwrap();
-            let vertex_buffer = renderer.buffers.get(&mesh.vertex_buffer_handle).unwrap();
-            let index_buffer = renderer.buffers.get(&mesh.index_buffer_handle).unwrap();
+            let vertex_buffer = renderer
+                .mesh_buffers
+                .get(&mesh.vertex_buffer_handle)
+                .unwrap();
+            let index_buffer = renderer
+                .mesh_buffers
+                .get(&mesh.index_buffer_handle)
+                .unwrap();
 
             render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass
-                .set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(
                 mesh.index_offset as u32..(mesh.index_offset + mesh.index_count) as u32,
                 mesh.vertex_offset as i32,
-                0..1,
+                index as u32..(index + 1) as u32,
             );
         }
     }

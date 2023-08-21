@@ -1,11 +1,29 @@
-use glam::{Mat4, Vec3};
+use egui::epaint::ahash::HashMap;
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use std::{cell::RefCell, collections::BTreeMap, iter, marker::PhantomData, rc::Rc};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::{Camera, Mesh, Sun, Vertex};
+use crate::{Camera, Mesh, Sun};
 
-use super::RenderPass;
+use super::{shadow_pass::SunUniform, RenderPass};
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub uv: Vec2,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct RenderInstance {
+    pub model_matrix_0: Vec4,
+    pub model_matrix_1: Vec4,
+    pub model_matrix_2: Vec4,
+    pub model_matrix_3: Vec4,
+}
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -92,6 +110,8 @@ impl<T> Pool<T> {
 
 pub const DEPTH_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
+pub const SCENE_OBJECT_INSTANCES_BUFFER_SIZE: u64 = 20 * 1024 * 1024; //20MB
+
 pub struct Renderer<'renderer> {
     pub window: Window,
     pub instance: wgpu::Instance,
@@ -105,21 +125,29 @@ pub struct Renderer<'renderer> {
 
     // Everything below this should be in it's own struct and not part of the Renderer base
     pub render_passes: Vec<Rc<RefCell<dyn RenderPass>>>,
+    pub render_pass_resources: HashMap<&'renderer str, wgpu::Texture>,
 
     pub sun: Sun,
-    pub camera: Camera,
+    sun_uniform: SunUniform,
+    pub sun_buffer: wgpu::Buffer,
 
+    pub camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
-    pub bind_group_layout: wgpu::BindGroupLayout,
+
+    pub global_bind_group_layout: wgpu::BindGroupLayout,
     pub global_bind_group: wgpu::BindGroup,
 
     pub scene_objects: Vec<RenderSceneObject>,
+    pub scene_object_instances: wgpu::Buffer,
+
     pub meshes: Pool<RenderMesh>,
-    pub buffers: Pool<wgpu::Buffer>,
+    pub mesh_buffers: Pool<wgpu::Buffer>,
 
     pub depth_texture: wgpu::Texture,
     pub depth_texture_view: wgpu::TextureView,
+
+    pub sampler: wgpu::Sampler,
 
     // RENDER OBJECT CACHING. Has no reclaiming so it grows infinitely with each new variant...
     // Might be a problem. Reclaiming would require tracking object usage.
@@ -176,19 +204,20 @@ impl<'renderer> Renderer<'renderer> {
         };
         surface.configure(&device, &surface_configuration);
 
-        let global_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("renderer bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::all(),
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let global_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("renderer bind group layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth texture"),
@@ -202,15 +231,34 @@ impl<'renderer> Renderer<'renderer> {
             dimension: wgpu::TextureDimension::D2,
             format: DEPTH_TEXTURE_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
+            view_formats: &[DEPTH_TEXTURE_FORMAT],
         });
 
         let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
         let sun = Sun {
-            inverse_direction: Vec3::new(0.5, 2.0, 2.0),
-            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, -10.0, 20.0),
+            inverse_direction: Vec3::new(4.0, 5.0, 1.0),
+            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 20.0, 0.1),
         };
+
+        let sun_uniform = SunUniform::default();
+
+        let sun_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("shadow pass bind group sun buffer"),
+            contents: bytemuck::cast_slice(&[sun_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
         let camera = Camera::new(
             Mat4::look_at_rh(Vec3::new(0.0, 5.0, 5.0), Vec3::ZERO, Vec3::Y),
@@ -221,8 +269,7 @@ impl<'renderer> Renderer<'renderer> {
             ),
         );
 
-        let mut camera_uniform = CameraUniform::default();
-        camera_uniform.update_view_projection(&camera);
+        let camera_uniform = CameraUniform::default();
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("renderer bind group camera buffer"),
@@ -239,6 +286,13 @@ impl<'renderer> Renderer<'renderer> {
             }],
         });
 
+        let scene_object_instances = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("scene object instances"),
+            size: SCENE_OBJECT_INSTANCES_BUFFER_SIZE,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             window,
             surface,
@@ -250,26 +304,34 @@ impl<'renderer> Renderer<'renderer> {
             device,
             queue,
 
+            render_passes: Default::default(),
+            render_pass_resources: Default::default(),
+
             scene_objects: Default::default(),
 
             depth_texture,
             depth_texture_view,
+            sampler,
 
             sun,
+            sun_uniform,
+            sun_buffer,
+
             camera,
             camera_uniform,
             camera_buffer,
 
-            bind_group_layout: global_bind_group_layout,
+            global_bind_group_layout,
             global_bind_group,
+
+            meshes: Default::default(),
+            mesh_buffers: Default::default(),
 
             bind_group_cache: Default::default(),
             bind_group_layout_cache: Default::default(),
             pipeline_layout_cache: Default::default(),
             render_pipeline_cache: Default::default(),
-            render_passes: Default::default(),
-            meshes: Default::default(),
-            buffers: Default::default(),
+            scene_object_instances,
         }
     }
 
@@ -280,6 +342,26 @@ impl<'renderer> Renderer<'renderer> {
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
+        self.sun_uniform.update(&self.camera, &self.sun);
+
+        self.queue.write_buffer(
+            &self.sun_buffer,
+            0,
+            bytemuck::cast_slice(&[self.sun_uniform]),
+        );
+
+        let instances = self
+            .scene_objects
+            .iter()
+            .map(|scene_object| scene_object.transform)
+            .collect::<Vec<_>>();
+
+        self.queue.write_buffer(
+            &self.scene_object_instances,
+            0,
+            bytemuck::cast_slice(instances.as_slice()),
         );
 
         for pass in &self.render_passes {
@@ -333,7 +415,7 @@ impl<'renderer> Renderer<'renderer> {
             })
             .collect::<Vec<_>>();
 
-        let vertex_buffer_handle = self.buffers.add(self.device.create_buffer_init(
+        let vertex_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("vertex buffer"),
                 contents: bytemuck::cast_slice(vertex_data.as_slice()),
@@ -341,7 +423,7 @@ impl<'renderer> Renderer<'renderer> {
             },
         ));
 
-        let index_buffer_handle = self.buffers.add(self.device.create_buffer_init(
+        let index_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("index buffer"),
                 contents: bytemuck::cast_slice(mesh.indices.as_slice()),
