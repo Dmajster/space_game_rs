@@ -149,6 +149,12 @@ pub struct Renderer<'renderer> {
 
     pub sampler: wgpu::Sampler,
 
+    // RENDER PASSES
+    // shadow_render_pass: wgpu::RenderPass<'renderer>,
+    // z_prepass_render_pass: wgpu::RenderPass<'renderer>,
+
+
+    
     // RENDER OBJECT CACHING. Has no reclaiming so it grows infinitely with each new variant...
     // Might be a problem. Reclaiming would require tracking object usage.
     bind_group_cache: BTreeMap<wgpu::BindGroupDescriptor<'renderer>, wgpu::BindGroup>,
