@@ -1,5 +1,7 @@
+use crate::App;
+
 use super::{
-    renderer::{self, RenderInstance, Renderer, Vertex},
+    renderer::{self, RenderInstance, Vertex},
     RenderPass,
 };
 
@@ -9,9 +11,9 @@ pub struct OpaqueRenderPass {
 }
 
 impl OpaqueRenderPass {
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(app: &App) -> Self {
         let bind_group_layout =
-            renderer
+            app.renderer
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("opaque pass bind group layout"),
@@ -48,13 +50,15 @@ impl OpaqueRenderPass {
                     ],
                 });
 
-        let shadow_depth_texture_view = &renderer
+        let shadow_depth_texture_view = &app
+            .renderer
             .render_pass_resources
             .get("shadow depth")
             .unwrap()
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let bind_group = renderer
+        let bind_group = app
+            .renderer
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("opaque pass bind group"),
@@ -64,13 +68,13 @@ impl OpaqueRenderPass {
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::Buffer(
-                            renderer.sun_buffer.as_entire_buffer_binding(),
+                            app.sun_buffer.as_entire_buffer_binding(),
                         ),
                     },
                     // Depth sampler
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&renderer.sampler),
+                        resource: wgpu::BindingResource::Sampler(&app.renderer.sampler),
                     },
                     // Shadow depth texture
                     wgpu::BindGroupEntry {
@@ -81,15 +85,16 @@ impl OpaqueRenderPass {
             });
 
         let pipeline_layout =
-            renderer
+            app.renderer
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("opaque pass pipeline layout"),
-                    bind_group_layouts: &[&renderer.global_bind_group_layout, &bind_group_layout], //&bind_group_layout
+                    bind_group_layouts: &[&app.global_bind_group_layout, &bind_group_layout], //&bind_group_layout
                     push_constant_ranges: &[],
                 });
 
-        let shader = renderer
+        let shader = app
+            .renderer
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("opaque pass shader"),
@@ -98,7 +103,7 @@ impl OpaqueRenderPass {
                 ),
             });
 
-        let pipeline = renderer
+        let pipeline = app.renderer
         .device
         .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("opaque pass render pipeline"),
@@ -142,7 +147,7 @@ impl OpaqueRenderPass {
                 entry_point: "fs_main",
                 targets: &[
                     Some(wgpu::ColorTargetState {
-                        format: renderer.surface_format,
+                        format: app.renderer.surface_format,
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     })
@@ -159,14 +164,9 @@ impl OpaqueRenderPass {
 }
 
 impl RenderPass for OpaqueRenderPass {
-    fn prepare(&mut self, _renderer: &Renderer) {}
+    fn prepare(&mut self, _app: &App) {}
 
-    fn render(
-        &mut self,
-        renderer: &Renderer,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-    ) {
+    fn render(&mut self, app: &App, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("opaque render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -183,7 +183,7 @@ impl RenderPass for OpaqueRenderPass {
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &renderer.depth_texture_view,
+                view: &app.renderer.depth_texture_view,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(0.0),
                     store: true,
@@ -193,17 +193,19 @@ impl RenderPass for OpaqueRenderPass {
         });
 
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &renderer.global_bind_group, &[]);
+        render_pass.set_bind_group(0, &app.global_bind_group, &[]);
         render_pass.set_bind_group(1, &self.bind_group, &[]);
-        render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
+        render_pass.set_vertex_buffer(1, app.renderer.scene_object_instances.slice(..));
 
-        for (index, object) in renderer.scene_objects.iter().enumerate() {
-            let mesh = renderer.meshes.get(&object.mesh_handle).unwrap();
-            let vertex_buffer = renderer
+        for (index, object) in app.renderer.scene_objects.iter().enumerate() {
+            let mesh = app.renderer.meshes.get(&object.mesh_handle).unwrap();
+            let vertex_buffer = app
+                .renderer
                 .mesh_buffers
                 .get(&mesh.vertex_buffer_handle)
                 .unwrap();
-            let index_buffer = renderer
+            let index_buffer = app
+                .renderer
                 .mesh_buffers
                 .get(&mesh.index_buffer_handle)
                 .unwrap();
@@ -218,5 +220,5 @@ impl RenderPass for OpaqueRenderPass {
         }
     }
 
-    fn cleanup(&mut self, _renderer: &Renderer) {}
+    fn cleanup(&mut self, _app: &App) {}
 }

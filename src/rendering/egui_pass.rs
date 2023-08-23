@@ -1,4 +1,5 @@
-use super::{renderer::Renderer, RenderPass};
+use crate::App;
+use super::RenderPass;
 use egui::{ClippedPrimitive, FullOutput, Ui};
 use egui_wgpu::renderer::ScreenDescriptor;
 use egui_winit::State;
@@ -17,28 +18,33 @@ pub struct EguiRenderPass {
 }
 
 impl EguiRenderPass {
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(app: &App) -> Self {
         Self {
             context: egui::Context::default(),
-            renderer: egui_wgpu::Renderer::new(&renderer.device, renderer.surface_format, None, 1),
+            renderer: egui_wgpu::Renderer::new(
+                &app.renderer.device,
+                app.renderer.surface_format,
+                None,
+                1,
+            ),
             clipped_primitives: vec![],
             screen_descriptor: ScreenDescriptor {
                 size_in_pixels: [
-                    renderer.window.inner_size().width,
-                    renderer.window.inner_size().height,
+                    app.renderer.window.inner_size().width,
+                    app.renderer.window.inner_size().height,
                 ],
                 pixels_per_point: 1.0,
             },
             full_output: FullOutput::default(),
-            state: egui_winit::State::new(&renderer.window),
+            state: egui_winit::State::new(&app.renderer.window),
             window_master: WindowMaster::new(),
         }
     }
 }
 
 impl RenderPass for EguiRenderPass {
-    fn prepare(&mut self, renderer: &Renderer) {
-        let raw_input = self.state.take_egui_input(&renderer.window);
+    fn prepare(&mut self, app: &App) {
+        let raw_input = self.state.take_egui_input(&app.renderer.window);
 
         self.full_output = self.context.run(raw_input, |context| {
             egui::SidePanel::new(egui::panel::Side::Left, "Profiler")
@@ -46,7 +52,7 @@ impl RenderPass for EguiRenderPass {
         });
 
         self.state.handle_platform_output(
-            &renderer.window,
+            &app.renderer.window,
             &self.context,
             self.full_output.platform_output.clone(),
         );
@@ -54,20 +60,19 @@ impl RenderPass for EguiRenderPass {
         self.clipped_primitives = self.context.tessellate(self.full_output.shapes.clone()); // creates triangles to paint
 
         for (id, image_delta) in &self.full_output.textures_delta.set {
-            self.renderer
-                .update_texture(&renderer.device, &renderer.queue, *id, image_delta);
+            self.renderer.update_texture(
+                &app.renderer.device,
+                &app.renderer.queue,
+                *id,
+                image_delta,
+            );
         }
     }
 
-    fn render(
-        &mut self,
-        renderer: &Renderer,
-        mut encoder: &mut CommandEncoder,
-        view: &TextureView,
-    ) {
+    fn render(&mut self, app: &App, mut encoder: &mut CommandEncoder, view: &TextureView) {
         self.renderer.update_buffers(
-            &renderer.device,
-            &renderer.queue,
+            &app.renderer.device,
+            &app.renderer.queue,
             &mut encoder,
             self.clipped_primitives.as_slice(),
             &self.screen_descriptor,
@@ -93,7 +98,7 @@ impl RenderPass for EguiRenderPass {
         );
     }
 
-    fn cleanup(&mut self, _renderer: &Renderer) {
+    fn cleanup(&mut self, _app: &App) {
         for id in &self.full_output.textures_delta.free {
             self.renderer.free_texture(id);
         }

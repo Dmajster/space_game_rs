@@ -1,17 +1,16 @@
 use wgpu::{CommandEncoder, TextureView};
 
-use self::renderer::Renderer;
+use crate::App;
 
-pub mod renderer;
-
-pub mod shadow_pass;
-pub mod opaque_pass;
 pub mod egui_pass;
+pub mod opaque_pass;
+pub mod renderer;
+pub mod shadow_pass;
 
 pub trait RenderPass {
-    fn prepare(&mut self, renderer: &Renderer);
+    fn prepare(&mut self, app: &App);
 
-    fn render(&mut self, renderer: &Renderer, encoder: &mut CommandEncoder, view: &TextureView);
+    fn render(&mut self, app: &App, encoder: &mut CommandEncoder, view: &TextureView);
 
-    fn cleanup(&mut self, renderer: &Renderer);
+    fn cleanup(&mut self, app: &App);
 }

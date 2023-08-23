@@ -1,25 +1,11 @@
-use crate::{Camera, Sun};
+use crate::App;
 
 use super::{
-    renderer::{self, RenderInstance, Renderer, Vertex},
+    renderer::{self, RenderInstance, Vertex},
     RenderPass,
 };
-use glam::{Mat4, Vec3};
 
 pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 2048;
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SunUniform {
-    mvp: Mat4,
-}
-
-impl SunUniform {
-    pub fn update(&mut self, camera: &Camera, sun: &Sun) {
-        let view = Mat4::look_at_rh(sun.inverse_direction, Vec3::ZERO, Vec3::Y);
-        self.mvp = sun.projection * view;
-    }
-}
 
 pub struct ShadowRenderPass {
     bind_group: wgpu::BindGroup,
@@ -28,34 +14,39 @@ pub struct ShadowRenderPass {
 }
 
 impl ShadowRenderPass {
-    pub fn new(renderer: &mut Renderer) -> Self {
-        let texture = renderer.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("shadow pass texture"),
-            size: wgpu::Extent3d {
-                width: SHADOW_PASS_TEXTURE_SIZE,
-                height: SHADOW_PASS_TEXTURE_SIZE,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: renderer::DEPTH_TEXTURE_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
+    pub fn new(app: &mut App) -> Self {
+        let texture = app
+            .renderer
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("shadow pass texture"),
+                size: wgpu::Extent3d {
+                    width: SHADOW_PASS_TEXTURE_SIZE,
+                    height: SHADOW_PASS_TEXTURE_SIZE,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: renderer::DEPTH_TEXTURE_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
 
-        renderer
+        app.renderer
             .render_pass_resources
             .insert("shadow depth", texture);
 
-        let texture_view = renderer
+        let texture_view = app
+            .renderer
             .render_pass_resources
             .get("shadow depth")
             .unwrap()
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group_layout =
-            renderer
+            app.renderer
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("shadow pass bind group layout"),
@@ -71,19 +62,20 @@ impl ShadowRenderPass {
                     }],
                 });
 
-        let bind_group = renderer
+        let bind_group = app
+            .renderer
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("shadow pass bind group"),
                 layout: &bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: renderer.sun_buffer.as_entire_binding(),
+                    resource: app.sun_buffer.as_entire_binding(),
                 }],
             });
 
         let pipeline_layout =
-            renderer
+            app.renderer
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("shadow pass pipeline layout"),
@@ -91,7 +83,8 @@ impl ShadowRenderPass {
                     push_constant_ranges: &[],
                 });
 
-        let shader = renderer
+        let shader = app
+            .renderer
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shadow pass shader"),
@@ -100,7 +93,7 @@ impl ShadowRenderPass {
                 ),
             });
 
-        let pipeline = renderer
+        let pipeline = app.renderer
             .device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("shadow pass render pipeline"),
@@ -152,14 +145,9 @@ impl ShadowRenderPass {
 }
 
 impl RenderPass for ShadowRenderPass {
-    fn prepare(&mut self, renderer: &Renderer) {}
+    fn prepare(&mut self, _app: &App) {}
 
-    fn render(
-        &mut self,
-        renderer: &Renderer,
-        encoder: &mut wgpu::CommandEncoder,
-        _view: &wgpu::TextureView,
-    ) {
+    fn render(&mut self, app: &App, encoder: &mut wgpu::CommandEncoder, _view: &wgpu::TextureView) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("shadow pass"),
             color_attachments: &[],
@@ -175,15 +163,17 @@ impl RenderPass for ShadowRenderPass {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
-        render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
+        render_pass.set_vertex_buffer(1, app.renderer.scene_object_instances.slice(..));
 
-        for (index, object) in renderer.scene_objects.iter().enumerate() {
-            let mesh = renderer.meshes.get(&object.mesh_handle).unwrap();
-            let vertex_buffer = renderer
+        for (index, object) in app.renderer.scene_objects.iter().enumerate() {
+            let mesh = app.renderer.meshes.get(&object.mesh_handle).unwrap();
+            let vertex_buffer = app
+                .renderer
                 .mesh_buffers
                 .get(&mesh.vertex_buffer_handle)
                 .unwrap();
-            let index_buffer = renderer
+            let index_buffer = app
+                .renderer
                 .mesh_buffers
                 .get(&mesh.index_buffer_handle)
                 .unwrap();
@@ -198,5 +188,5 @@ impl RenderPass for ShadowRenderPass {
         }
     }
 
-    fn cleanup(&mut self, _renderer: &Renderer) {}
+    fn cleanup(&mut self, _app: &App) {}
 }
