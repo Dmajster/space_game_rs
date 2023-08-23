@@ -1,5 +1,4 @@
-use crate::App;
-use super::RenderPass;
+use crate::{App, rendering::RenderPass};
 use egui::{ClippedPrimitive, FullOutput, Ui};
 use egui_wgpu::renderer::ScreenDescriptor;
 use egui_winit::State;

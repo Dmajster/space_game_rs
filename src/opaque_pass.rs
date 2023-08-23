@@ -1,9 +1,4 @@
-use crate::App;
-
-use super::{
-    renderer::{self, RenderInstance, Vertex},
-    RenderPass,
-};
+use crate::{App, rendering::{Vertex, RenderInstance, self, RenderPass}};
 
 pub struct OpaqueRenderPass {
     pipeline: wgpu::RenderPipeline,
@@ -99,7 +94,7 @@ impl OpaqueRenderPass {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("opaque pass shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../assets/shaders/opaque_pass.wgsl").into(),
+                    include_str!("../assets/shaders/opaque_pass.wgsl").into(),
                 ),
             });
 
@@ -135,7 +130,7 @@ impl OpaqueRenderPass {
                 conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
-                format: renderer::DEPTH_TEXTURE_FORMAT,
+                format: rendering::DEPTH_TEXTURE_FORMAT,
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Greater,
                 stencil: wgpu::StencilState::default(),

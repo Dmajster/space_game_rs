@@ -1,9 +1,4 @@
-use crate::App;
-
-use super::{
-    renderer::{self, RenderInstance, Vertex},
-    RenderPass,
-};
+use crate::{App, rendering::{self, Vertex, RenderInstance, RenderPass}};
 
 pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 2048;
 
@@ -28,7 +23,7 @@ impl ShadowRenderPass {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: renderer::DEPTH_TEXTURE_FORMAT,
+                format: rendering::DEPTH_TEXTURE_FORMAT,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
@@ -89,7 +84,7 @@ impl ShadowRenderPass {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shadow pass shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../assets/shaders/shadow_pass.wgsl").into(),
+                    include_str!("../assets/shaders/shadow_pass.wgsl").into(),
                 ),
             });
 
@@ -125,7 +120,7 @@ impl ShadowRenderPass {
                     conservative: false,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: renderer::DEPTH_TEXTURE_FORMAT,
+                    format: rendering::DEPTH_TEXTURE_FORMAT,
                     depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::Greater,
                     stencil: wgpu::StencilState::default(),

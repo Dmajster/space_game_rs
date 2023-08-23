@@ -1,91 +1,63 @@
-use std::{collections::BTreeMap, fs, path::Path};
-use gltf::{accessor::DataType, Gltf};
-use crate::VertexAttributeType;
+use glam::{Vec2, Vec3};
+use gltf::{Gltf, Semantic};
+use std::{fs, mem, path::Path};
 
+use crate::Mesh;
 
-
-pub fn load<P>(path: P)
+pub fn load<P>(path: &P)
 where
     P: AsRef<Path>,
 {
-    let gltf = Gltf::open(path.as_ref().clone()).unwrap();
+    let gltf = Gltf::open(&path).unwrap();
 
     for mesh in gltf.meshes() {
         for primitive in mesh.primitives() {
-            let mut attributes = BTreeMap::new();
-
-            for (semantic, accessor) in primitive.attributes() {
-                match semantic {
-                    gltf::Semantic::Positions => {
-                        if accessor.data_type() != DataType::F32 {
-                            todo!()
-                        }
-
-                        attributes.insert(
-                            VertexAttributeType::Position,
-                            get_data_from_accessor(path.as_ref().clone(), &accessor),
-                        );
+            let positions = primitive
+                .attributes()
+                .find_map(|(semantic, accessor)| {
+                    if semantic == Semantic::Positions {
+                        Some(get_data_from_accessor::<P, Vec3>(&path, &accessor))
+                    } else {
+                        None
                     }
-                    gltf::Semantic::Normals => {
-                        if accessor.data_type() != DataType::F32 {
-                            todo!()
-                        }
+                })
+                .unwrap();
 
-                        attributes.insert(
-                            VertexAttributeType::Normal,
-                            get_data_from_accessor(path.as_ref().clone(), &accessor),
-                        );
+            let normals = primitive
+                .attributes()
+                .find_map(|(semantic, accessor)| {
+                    if semantic == Semantic::Normals {
+                        Some(get_data_from_accessor::<P, Vec3>(&path, &accessor))
+                    } else {
+                        None
                     }
-                    gltf::Semantic::Tangents => {
-                        if accessor.data_type() != DataType::F32 {
-                            todo!()
-                        }
+                })
+                .unwrap();
 
-                        attributes.insert(
-                            VertexAttributeType::Tangent,
-                            get_data_from_accessor(path.as_ref().clone(), &accessor),
-                        );
+            let uvs = primitive
+                .attributes()
+                .find_map(|(semantic, accessor)| {
+                    if semantic == Semantic::TexCoords(0) {
+                        Some(get_data_from_accessor::<P, Vec2>(&path, &accessor))
+                    } else {
+                        None
                     }
-                    gltf::Semantic::Colors(i) => {
-                        if accessor.data_type() != DataType::U32 {
-                            todo!()
-                        }
+                })
+                .unwrap();
 
-                        if i > 0 {
-                            todo!()
-                        }
+            let indices = get_data_from_accessor::<P, u32>(&path, &primitive.indices().unwrap());
 
-                        attributes.insert(
-                            VertexAttributeType::Color0,
-                            get_data_from_accessor(path.as_ref().clone(), &accessor),
-                        );
-                    }
-                    gltf::Semantic::TexCoords(i) => {
-                        if accessor.data_type() != DataType::F32 {
-                            todo!()
-                        }
-
-                        if i > 0 {
-                            todo!()
-                        }
-
-                        attributes.insert(
-                            VertexAttributeType::Uv0,
-                            get_data_from_accessor(path.as_ref().clone(), &accessor),
-                        );
-                    }
-                    gltf::Semantic::Joints(_) => todo!(),
-                    gltf::Semantic::Weights(_) => todo!(),
-                }
-            }
-
-            let indices =
-                get_data_from_accessor(path.as_ref().clone(), &primitive.indices().unwrap());
+            let mesh = Mesh {
+                positions,
+                normals,
+                uvs,
+                indices,
+            };
         }
     }
 }
 
-fn get_data_from_accessor<P>(path: P, accessor: &gltf::Accessor) -> Vec<u8>
+fn get_data_from_accessor<P, T>(path: &P, accessor: &gltf::Accessor) -> Vec<T>
 where
     P: AsRef<Path>,
 {
@@ -118,17 +90,18 @@ where
             .collect::<Vec<u8>>(),
         None => view_data.to_vec(),
     };
-    data
+
+    transmute_byte_vec::<T>(data)
 }
 
-// fn transmute_byte_vec<T>(mut bytes: Vec<u8>) -> Vec<T> {
-//     unsafe {
-//         let size_of_t = mem::size_of::<T>();
-//         let length = bytes.len() / size_of_t;
-//         let capacity = bytes.capacity() / size_of_t;
-//         let mutptr = bytes.as_mut_ptr() as *mut T;
-//         mem::forget(bytes);
+fn transmute_byte_vec<T>(mut bytes: Vec<u8>) -> Vec<T> {
+    unsafe {
+        let size_of_t = mem::size_of::<T>();
+        let length = bytes.len() / size_of_t;
+        let capacity = bytes.capacity() / size_of_t;
+        let mutptr = bytes.as_mut_ptr() as *mut T;
+        mem::forget(bytes);
 
-//         Vec::from_raw_parts(mutptr, length, capacity)
-//     }
-// }
+        Vec::from_raw_parts(mutptr, length, capacity)
+    }
+}

@@ -10,6 +10,7 @@ wgpu = { version = "0.16", features = ["expose-ids"]}
 pollster = "0.3"
 bytemuck = "1.13"
 glam = { version = "0.24", features = ["bytemuck"] }
+gltf = "1.3"
 #editor
 egui = "0.22"
 egui-wgpu = { version = "0.22", features = ["winit", "puffin"] }
