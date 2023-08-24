@@ -1,8 +1,8 @@
 use app::{App, Passes};
-use glam::{Mat4, Quat, Vec2, Vec3};
-use rendering::{MeshDescriptor, MeshId};
+use glam::{Mat4, Quat, Vec3};
+use rendering::MeshId;
 use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fmt, fs, path::Path, rc::Rc};
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -11,7 +11,7 @@ use winit::{
 
 mod app;
 mod asset_server;
-mod egui_pass;
+mod egui;
 mod importing;
 mod opaque_pass;
 mod rendering;
@@ -19,6 +19,8 @@ mod shadow_pass;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
+
+pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
 
 impl Id {
     pub fn new() -> Self {
@@ -32,20 +34,56 @@ impl Id {
     pub const EMPTY: Id = Id(u64::MAX);
 }
 
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if *self == Id::EMPTY {
+            f.write_str("empty")
+        } else {
+            f.write_str(&self.0.to_string())
+        }
+    }
+}
+
 pub type SceneObjectId = Id;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Scene {
     pub scene_object_hierarchy: SceneObjectHierarchy,
 }
 
 impl Scene {
+    pub fn read_from_file_or_new<P>(path: &P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        if let Ok(bytes) = fs::read(path) {
+            let decompressed_bytes = lz4_flex::decompress_size_prepended(&bytes).unwrap();
+
+            bincode::deserialize::<Self>(&decompressed_bytes).unwrap()
+        } else {
+            Default::default()
+        }
+    }
+
+    pub fn write_to_file<P>(&self, path: &P)
+    where
+        P: AsRef<Path>,
+    {
+        let bytes = bincode::serialize::<Self>(&self).unwrap();
+
+        let compressed_bytes = lz4_flex::compress_prepend_size(&bytes);
+
+        fs::write(path, compressed_bytes).unwrap();
+    }
+
     pub fn add(&mut self) -> &mut SceneObject {
         self.scene_object_hierarchy.scene_objects.push(SceneObject {
             id: SceneObjectId::new(),
             parent: None,
-            transform: Mat4::IDENTITY,
             mesh_id: MeshId::EMPTY,
+            position: Vec3::ZERO,
+            rotation: Vec3::ZERO,
+            scale: Vec3::ONE,
         });
 
         self.scene_object_hierarchy
@@ -54,28 +92,46 @@ impl Scene {
             .unwrap()
     }
 
-    // pub fn parent(
-    //     &mut self,
-    //     node: Handle<SceneObjectHierarchyNode>,
-    //     parent: Handle<SceneObjectHierarchyNode>,
-    // ) {
-    //     self.scene_object_hierarchy
-    //         .nodes
-    //         .get_mut(&node)
-    //         .unwrap()
-    //         .parent_handle = parent;
-    // }
+    pub fn get_mut(&mut self, scene_object_id: SceneObjectId) -> &mut SceneObject {
+        self.scene_object_hierarchy
+            .scene_objects
+            .iter_mut()
+            .find(|scene_object| scene_object.id == scene_object_id)
+            .unwrap()
+    }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SceneObject {
     id: SceneObjectId,
     pub parent: Option<SceneObjectId>,
-    pub transform: Mat4,
+    pub position: Vec3,
+    pub rotation: Vec3,
+    pub scale: Vec3,
     pub mesh_id: MeshId,
 }
 
-#[derive(Debug, Default)]
+impl SceneObject {
+    pub fn calculate_transform(&self) -> Mat4 {
+        let cr = (self.rotation.x.to_radians() * 0.5).cos();
+        let sr = (self.rotation.x.to_radians() * 0.5).sin();
+        let cp = (self.rotation.y.to_radians() * 0.5).cos();
+        let sp = (self.rotation.y.to_radians() * 0.5).sin();
+        let cy = (self.rotation.z.to_radians() * 0.5).cos();
+        let sy = (self.rotation.z.to_radians() * 0.5).sin();
+
+        let rotation = Quat::from_xyzw(
+            cr * cp * cy + sr * sp * sy,
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+        );
+
+        Mat4::from_scale_rotation_translation(self.scale, rotation, self.position)
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SceneObjectHierarchy {
     pub scene_objects: Vec<SceneObject>,
 }
@@ -88,26 +144,13 @@ fn main() {
     let mut app = App::new(&event_loop);
     app.passes = Some(Rc::new(RefCell::new(Passes::new(&mut app))));
 
-    let scene_object = app.scene.add();
-    scene_object.transform = Mat4::from_scale_rotation_translation(
-        Vec3::new(5.0, 5.0, 5.0),
-        Quat::IDENTITY,
-        Vec3::new(-2.5, 0.0, -2.5),
-    );
-    // scene_object.mesh_id = mesh.id();
-
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 ref event,
                 window_id,
             } if window_id == app.renderer.window.id() => {
-                let response = {
-                    let mut passes = app.passes.as_ref().unwrap().borrow_mut();
-                    let context = passes.egui_pass.context.clone();
-
-                    passes.egui_pass.state.on_event(&context, event)
-                };
+                let response = { app.egui_state.on_event(&app.egui_context, event) };
 
                 if !response.consumed {
                     match event {

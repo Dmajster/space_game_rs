@@ -1,16 +1,17 @@
 use std::{cell::RefCell, iter, rc::Rc};
 
+use egui::FullOutput;
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 use crate::{
-    asset_server::{AssetServer, self},
-    egui_pass::EguiRenderPass,
+    asset_server::{self, AssetServer},
+    egui::EguiRenderPass,
     opaque_pass::OpaqueRenderPass,
-    rendering::{RenderPass, Renderer},
+    rendering::{MeshId, RenderPass, Renderer},
     shadow_pass::ShadowRenderPass,
-    Scene,
+    Scene, SceneObjectId,
 };
 
 pub struct Sun {
@@ -65,6 +66,10 @@ pub struct App<'app> {
     pub asset_server: AssetServer,
     pub renderer: Renderer<'app>,
 
+    pub egui_context: egui::Context,
+    pub egui_state: egui_winit::State,
+    pub egui_full_output: egui::FullOutput,
+
     // Move this to high level renderer
     pub sun: Sun,
     sun_uniform: SunUniform,
@@ -79,6 +84,9 @@ pub struct App<'app> {
 
     pub passes: Option<Rc<RefCell<Passes>>>,
     pub scene: Scene,
+
+    // Move to scene window
+    selected_scene_object_id: SceneObjectId,
 }
 
 pub struct Passes {
@@ -176,10 +184,19 @@ impl App<'_> {
 
         let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
 
+        let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
+
+        let egui_context = egui::Context::default();
+        let egui_state = egui_winit::State::new(&renderer.window);
+        let egui_full_output = FullOutput::default();
+
         Self {
+            egui_context,
+            egui_state,
+            egui_full_output,
             asset_server,
             renderer,
-            scene: Default::default(),
+            scene,
             sun,
             sun_uniform,
             sun_buffer,
@@ -189,6 +206,8 @@ impl App<'_> {
             global_bind_group_layout,
             global_bind_group,
             passes: None,
+
+            selected_scene_object_id: SceneObjectId::EMPTY,
         }
     }
 
@@ -217,7 +236,7 @@ impl App<'_> {
             .scene_objects
             .iter()
             .map(|mut scene_object| {
-                let mut transform = scene_object.transform;
+                let mut transform = scene_object.calculate_transform();
 
                 loop {
                     if let Some(parent_id) = scene_object.parent {
@@ -229,7 +248,7 @@ impl App<'_> {
                             .find(|scene_object| scene_object.id == parent_id)
                             .unwrap();
 
-                        transform *= parent.transform;
+                        transform *= parent.calculate_transform();
 
                         scene_object = parent;
                     } else {
@@ -247,10 +266,12 @@ impl App<'_> {
             bytemuck::cast_slice(instances.as_slice()),
         );
 
+        self.update_egui();
+
         let mut passes = self.passes.as_ref().unwrap().borrow_mut();
-        passes.shadow_pass.prepare(&self);
-        passes.opaque_pass.prepare(&self);
-        passes.egui_pass.prepare(&self);
+        passes.shadow_pass.prepare(self);
+        passes.opaque_pass.prepare(self);
+        passes.egui_pass.prepare(self);
     }
 
     pub fn update(&mut self) {
@@ -283,6 +304,130 @@ impl App<'_> {
     }
 
     pub fn close(&mut self) {
-        self.asset_server.write_to_file(&asset_server::DEFAULT_PATH)
+        self.asset_server.write_to_file(&asset_server::DEFAULT_PATH);
+
+        self.scene.write_to_file(&crate::DEFAULT_SCENE_PATH);
+    }
+
+    fn update_egui(&mut self) {
+        let raw_input = self.egui_state.take_egui_input(&self.renderer.window);
+
+        self.egui_full_output = self.egui_context.run(raw_input, |context| {
+            egui::Window::new("hierarchy").show(context, |ui| {
+                if ui.button("add scene object").clicked() {
+                    self.scene.add();
+                }
+
+                ui.separator();
+
+                for scene_object in &self.scene.scene_object_hierarchy.scene_objects {
+                    if ui.button(format!("{}", scene_object.id.0)).clicked() {
+                        self.selected_scene_object_id = scene_object.id;
+                    }
+                }
+            });
+
+            egui::Window::new("inspector").show(context, |ui| {
+                if self.selected_scene_object_id != SceneObjectId::EMPTY {
+                    let scene_object = self.scene.get_mut(self.selected_scene_object_id);
+
+                    ui.label("Transform");
+
+                    ui.add_space(12.0);
+
+                    ui.columns(4, |columns| {
+                        columns[0].label("Position");
+                        columns[1].add(
+                            egui::DragValue::new(&mut scene_object.position.x)
+                                .speed(1.0)
+                                .suffix("m"),
+                        );
+                        columns[2].add(
+                            egui::DragValue::new(&mut scene_object.position.y)
+                                .speed(1.0)
+                                .suffix("m"),
+                        );
+                        columns[3].add(
+                            egui::DragValue::new(&mut scene_object.position.z)
+                                .speed(1.0)
+                                .suffix("m"),
+                        );
+                    });
+                    ui.columns(4, |columns| {
+                        columns[0].label("Rotation");
+                        columns[1].add(
+                            egui::DragValue::new(&mut scene_object.rotation.x)
+                                .speed(1.0)
+                                .suffix("°"),
+                        );
+                        columns[2].add(
+                            egui::DragValue::new(&mut scene_object.rotation.y)
+                                .speed(1.0)
+                                .suffix("°"),
+                        );
+                        columns[3].add(
+                            egui::DragValue::new(&mut scene_object.rotation.z)
+                                .speed(1.0)
+                                .suffix("°"),
+                        );
+                    });
+                    ui.columns(4, |columns| {
+                        columns[0].label("Scale");
+                        columns[1].add(
+                            egui::DragValue::new(&mut scene_object.scale.x)
+                                .speed(1.0)
+                                .suffix("x"),
+                        );
+                        columns[2].add(
+                            egui::DragValue::new(&mut scene_object.scale.y)
+                                .speed(1.0)
+                                .suffix("x"),
+                        );
+                        columns[3].add(
+                            egui::DragValue::new(&mut scene_object.scale.z)
+                                .speed(1.0)
+                                .suffix("x"),
+                        );
+                    });
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    ui.label("Mesh");
+                    ui.add_space(12.0);
+
+                    ui.columns(2, |columns| {
+                        columns[0].label("Mesh ID:");
+
+                        egui::ComboBox::from_label("")
+                            .selected_text(format!("{}", &mut scene_object.mesh_id))
+                            .show_ui(&mut columns[1], |ui| {
+                                ui.selectable_value(
+                                    &mut scene_object.mesh_id,
+                                    MeshId::EMPTY,
+                                    "empty",
+                                );
+
+                                for mesh in self.asset_server.get_meshes() {
+                                    ui.selectable_value(
+                                        &mut scene_object.mesh_id,
+                                        mesh.id(),
+                                        format!("{}", mesh.id().0),
+                                    );
+                                }
+                            });
+                    })
+                }
+
+                ui.separator();
+            });
+        });
+
+        self.egui_state.handle_platform_output(
+            &self.renderer.window,
+            &self.egui_context,
+            self.egui_full_output.platform_output.clone(),
+        );
     }
 }

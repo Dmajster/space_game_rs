@@ -1,4 +1,7 @@
-use crate::{App, rendering::{self, Vertex, RenderInstance, RenderPass}};
+use crate::{
+    rendering::{self, RenderInstance, RenderPass, Vertex},
+    App,
+};
 
 pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 2048;
 

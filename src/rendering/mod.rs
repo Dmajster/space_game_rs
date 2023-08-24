@@ -329,7 +329,7 @@ impl<'renderer> Renderer<'renderer> {
 
         while missing_render_mesh_ids.len() > 0 {
             let missing_render_mesh_id = missing_render_mesh_ids.pop().unwrap();
-            let mesh = asset_server.get(&missing_render_mesh_id).unwrap();
+            let mesh = asset_server.get_mesh(&missing_render_mesh_id).unwrap();
 
             let vertex_data = mesh
                 .positions

@@ -1,4 +1,4 @@
-use crate::{App, rendering::RenderPass};
+use crate::{rendering::RenderPass, App};
 use egui::{ClippedPrimitive, FullOutput, Ui};
 use egui_wgpu::renderer::ScreenDescriptor;
 use egui_winit::State;
@@ -56,7 +56,7 @@ impl RenderPass for EguiRenderPass {
             self.full_output.platform_output.clone(),
         );
 
-        self.clipped_primitives = self.context.tessellate(self.full_output.shapes.clone()); // creates triangles to paint
+        self.clipped_primitives = self.context.tessellate(self.full_output.shapes.clone());
 
         for (id, image_delta) in &self.full_output.textures_delta.set {
             self.renderer.update_texture(

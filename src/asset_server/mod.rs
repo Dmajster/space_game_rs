@@ -41,7 +41,11 @@ impl AssetServer {
         self.meshes.last_mut().unwrap()
     }
 
-    pub fn get(&self, mesh_id: &MeshId) -> Option<&Mesh> {
+    pub fn get_mesh(&self, mesh_id: &MeshId) -> Option<&Mesh> {
         self.meshes.iter().find(|mesh| mesh.id() == *mesh_id)
+    }
+
+    pub fn get_meshes(&self) -> &Vec<Mesh> {
+        &self.meshes
     }
 }
