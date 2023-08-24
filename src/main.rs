@@ -1,6 +1,7 @@
 use app::{App, Passes};
 use glam::{Mat4, Quat, Vec2, Vec3};
-use rendering::RenderSceneObject;
+use rendering::{MeshDescriptor, MeshId};
+use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, rc::Rc};
 
 use winit::{
@@ -9,65 +10,74 @@ use winit::{
 };
 
 mod app;
-mod importing;
-mod rendering;
+mod asset_server;
 mod egui_pass;
+mod importing;
 mod opaque_pass;
+mod rendering;
 mod shadow_pass;
 
-pub struct Mesh {
-    pub positions: Vec<Vec3>,
-    pub normals: Vec<Vec3>,
-    pub uvs: Vec<Vec2>,
-    pub indices: Vec<u32>,
-}
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Id(u64);
 
-pub struct Sun {
-    pub inverse_direction: Vec3,
-    pub projection: Mat4,
-}
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SunUniform {
-    mvp: Mat4,
-}
-
-impl SunUniform {
-    pub fn update(&mut self, sun: &Sun) {
-        let view = Mat4::look_at_rh(sun.inverse_direction, Vec3::ZERO, Vec3::Y);
-        self.mvp = sun.projection * view;
+impl Id {
+    pub fn new() -> Self {
+        Id(fastrand::u64(..))
     }
+
+    pub fn from_u64(val: u64) -> Self {
+        Id(val)
+    }
+
+    pub const EMPTY: Id = Id(u64::MAX);
 }
 
-pub struct Camera {
+pub type SceneObjectId = Id;
+
+#[derive(Debug, Default)]
+pub struct Scene {
+    pub scene_object_hierarchy: SceneObjectHierarchy,
+}
+
+impl Scene {
+    pub fn add(&mut self) -> &mut SceneObject {
+        self.scene_object_hierarchy.scene_objects.push(SceneObject {
+            id: SceneObjectId::new(),
+            parent: None,
+            transform: Mat4::IDENTITY,
+            mesh_id: MeshId::EMPTY,
+        });
+
+        self.scene_object_hierarchy
+            .scene_objects
+            .last_mut()
+            .unwrap()
+    }
+
+    // pub fn parent(
+    //     &mut self,
+    //     node: Handle<SceneObjectHierarchyNode>,
+    //     parent: Handle<SceneObjectHierarchyNode>,
+    // ) {
+    //     self.scene_object_hierarchy
+    //         .nodes
+    //         .get_mut(&node)
+    //         .unwrap()
+    //         .parent_handle = parent;
+    // }
+}
+
+#[derive(Debug, Default)]
+pub struct SceneObject {
+    id: SceneObjectId,
+    pub parent: Option<SceneObjectId>,
     pub transform: Mat4,
-    pub projection: Mat4,
+    pub mesh_id: MeshId,
 }
 
-impl Camera {
-    fn new(transform: Mat4, projection: Mat4) -> Self {
-        Self {
-            transform,
-            projection,
-        }
-    }
-
-    fn build_view_projection_matrix(&self) -> Mat4 {
-        self.projection * self.transform
-    }
-}
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    pub view_projection: Mat4,
-}
-
-impl CameraUniform {
-    fn update_view_projection(&mut self, camera: &Camera) {
-        self.view_projection = camera.build_view_projection_matrix();
-    }
+#[derive(Debug, Default)]
+pub struct SceneObjectHierarchy {
+    pub scene_objects: Vec<SceneObject>,
 }
 
 fn main() {
@@ -76,44 +86,15 @@ fn main() {
     let event_loop = EventLoop::new();
 
     let mut app = App::new(&event_loop);
-
     app.passes = Some(Rc::new(RefCell::new(Passes::new(&mut app))));
 
-    let mesh = Mesh {
-        positions: vec![
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(1.0, 0.0, 1.0),
-            Vec3::new(1.0, 0.0, 0.0),
-        ],
-        normals: vec![Vec3::Y, Vec3::Y, Vec3::Y, Vec3::Y],
-        uvs: vec![
-            Vec2::new(0.0, 0.0),
-            Vec2::new(0.0, 0.0),
-            Vec2::new(0.0, 0.0),
-            Vec2::new(0.0, 0.0),
-        ],
-        indices: vec![0, 1, 2, 2, 3, 0],
-    };
-
-    let mesh_handle = app.renderer.add_mesh(mesh);
-
-    app.renderer.scene_objects.push(RenderSceneObject {
-        transform: Mat4::from_scale_rotation_translation(
-            Vec3::new(5.0, 5.0, 5.0),
-            Quat::IDENTITY,
-            Vec3::new(-2.5, 0.0, -2.5),
-        ),
-        mesh_handle,
-    });
-    app.renderer.scene_objects.push(RenderSceneObject {
-        transform: Mat4::from_scale_rotation_translation(
-            Vec3::new(1.0, 1.0, 1.0),
-            Quat::IDENTITY,
-            Vec3::new(-0.5, 1.0, -0.5),
-        ),
-        mesh_handle,
-    });
+    let scene_object = app.scene.add();
+    scene_object.transform = Mat4::from_scale_rotation_translation(
+        Vec3::new(5.0, 5.0, 5.0),
+        Quat::IDENTITY,
+        Vec3::new(-2.5, 0.0, -2.5),
+    );
+    // scene_object.mesh_id = mesh.id();
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -121,10 +102,12 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == app.renderer.window.id() => {
-                let mut passes = app.passes.as_ref().unwrap().borrow_mut();
-                let context = passes.egui_pass.context.clone();
+                let response = {
+                    let mut passes = app.passes.as_ref().unwrap().borrow_mut();
+                    let context = passes.egui_pass.context.clone();
 
-                let response = passes.egui_pass.state.on_event(&context, event);
+                    passes.egui_pass.state.on_event(&context, event)
+                };
 
                 if !response.consumed {
                     match event {
@@ -137,7 +120,10 @@ fn main() {
                                     ..
                                 },
                             ..
-                        } => *control_flow = ControlFlow::Exit,
+                        } => {
+                            app.close();
+                            *control_flow = ControlFlow::Exit
+                        }
                         WindowEvent::Resized(_physical_size) => {
                             // painter.on_window_resized(physical_size.width, physical_size.height)
                         }

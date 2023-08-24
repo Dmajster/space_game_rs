@@ -533,6 +533,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastrand"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
+
+[[package]]
 name = "fdeflate"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -609,6 +615,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42218cb640844e3872cc3c153dc975229e080a6c4733b34709ef445610550226"
 dependencies = [
  "bytemuck",
+ "serde",
 ]
 
 [[package]]
@@ -938,6 +945,12 @@ name = "lz4_flex"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b8c72594ac26bfd34f2d99dfced2edfaddfe8a476e3ff2ca0eb293d925c4f83"
+
+[[package]]
+name = "lz4_flex"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ea9b256699eda7b0387ffbc776dd625e28bde3918446381781245b7a50349d8"
 
 [[package]]
 name = "malloc_buf"
@@ -1381,7 +1394,7 @@ dependencies = [
  "byteorder",
  "cfg-if",
  "instant",
- "lz4_flex",
+ "lz4_flex 0.10.0",
  "once_cell",
  "parking_lot",
  "serde",
@@ -1576,14 +1589,18 @@ dependencies = [
 name = "space_game"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bytemuck",
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "fastrand",
  "glam",
  "gltf",
+ "lz4_flex 0.11.1",
  "pollster",
  "puffin_egui",
+ "serde",
  "wgpu",
  "winit",
 ]

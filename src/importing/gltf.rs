@@ -2,9 +2,9 @@ use glam::{Vec2, Vec3};
 use gltf::{Gltf, Semantic};
 use std::{fs, mem, path::Path};
 
-use crate::Mesh;
+use crate::{asset_server::AssetServer, rendering::MeshDescriptor, Scene};
 
-pub fn load<P>(path: &P)
+pub fn load<P>(path: &P, asset_server: &mut AssetServer, scene: &mut Scene)
 where
     P: AsRef<Path>,
 {
@@ -47,12 +47,12 @@ where
 
             let indices = get_data_from_accessor::<P, u32>(&path, &primitive.indices().unwrap());
 
-            let mesh = Mesh {
+            asset_server.add_mesh_from_desc(MeshDescriptor {
                 positions,
                 normals,
                 uvs,
                 indices,
-            };
+            });
         }
     }
 }

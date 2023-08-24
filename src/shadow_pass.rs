@@ -160,27 +160,27 @@ impl RenderPass for ShadowRenderPass {
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(1, app.renderer.scene_object_instances.slice(..));
 
-        for (index, object) in app.renderer.scene_objects.iter().enumerate() {
-            let mesh = app.renderer.meshes.get(&object.mesh_handle).unwrap();
-            let vertex_buffer = app
-                .renderer
-                .mesh_buffers
-                .get(&mesh.vertex_buffer_handle)
-                .unwrap();
-            let index_buffer = app
-                .renderer
-                .mesh_buffers
-                .get(&mesh.index_buffer_handle)
-                .unwrap();
+        // for (index, object) in app.renderer.scene_objects.iter().enumerate() {
+        //     let mesh = app.renderer.meshes.get(&object.mesh_handle).unwrap();
+        //     let vertex_buffer = app
+        //         .renderer
+        //         .mesh_buffers
+        //         .get(&mesh.vertex_buffer_handle)
+        //         .unwrap();
+        //     let index_buffer = app
+        //         .renderer
+        //         .mesh_buffers
+        //         .get(&mesh.index_buffer_handle)
+        //         .unwrap();
 
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(
-                mesh.index_offset as u32..(mesh.index_offset + mesh.index_count) as u32,
-                mesh.vertex_offset as i32,
-                index as u32..(index + 1) as u32,
-            );
-        }
+        //     render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+        //     render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        //     render_pass.draw_indexed(
+        //         mesh.index_offset as u32..(mesh.index_offset + mesh.index_count) as u32,
+        //         mesh.vertex_offset as i32,
+        //         index as u32..(index + 1) as u32,
+        //     );
+        // }
     }
 
     fn cleanup(&mut self, _app: &App) {}

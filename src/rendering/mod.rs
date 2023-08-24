@@ -1,59 +1,27 @@
+use serde::{Deserialize, Serialize};
 use wgpu::{CommandEncoder, TextureView};
 
-use crate::App;
-
-pub trait RenderPass {
-    fn prepare(&mut self, app: &App);
-
-    fn render(&mut self, app: &App, encoder: &mut CommandEncoder, view: &TextureView);
-
-    fn cleanup(&mut self, app: &App);
-}
-
-use egui::epaint::ahash::HashMap;
-use glam::{Mat4, Vec2, Vec3, Vec4};
-use std::{collections::BTreeMap, marker::PhantomData};
-use wgpu::util::DeviceExt;
-use winit::window::Window;
-
-use crate::Mesh;
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    pub position: Vec3,
-    pub normal: Vec3,
-    pub uv: Vec2,
-}
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct RenderInstance {
-    pub model_matrix_0: Vec4,
-    pub model_matrix_1: Vec4,
-    pub model_matrix_2: Vec4,
-    pub model_matrix_3: Vec4,
-}
-
-pub struct RenderSceneObject {
-    pub transform: Mat4, // Optimize to Mat4x3
-    pub mesh_handle: Handle<RenderMesh>,
-}
-
-pub struct RenderMesh {
-    pub vertex_buffer_handle: Handle<wgpu::Buffer>,
-    pub vertex_offset: usize,
-    pub vertex_count: usize,
-    pub index_buffer_handle: Handle<wgpu::Buffer>,
-    pub index_offset: usize,
-    pub index_count: usize,
-}
+use crate::{asset_server::AssetServer, App, Id};
 
 #[derive(Debug)]
 pub struct Handle<T> {
     pub index: usize,
     pub generation: usize,
     _pd: PhantomData<T>,
+}
+
+impl<T> Handle<T> {
+    pub const EMPTY: Handle<T> = Handle {
+        index: usize::MAX,
+        generation: usize::MAX,
+        _pd: PhantomData,
+    };
+}
+
+impl<T> Default for Handle<T> {
+    fn default() -> Self {
+        Handle::EMPTY
+    }
 }
 
 impl<T> Clone for Handle<T> {
@@ -104,12 +72,100 @@ impl<T> Pool<T> {
             None
         }
     }
+
+    pub fn get_mut(&mut self, handle: &Handle<T>) -> Option<&mut T> {
+        if handle.index < self.objects.len() && handle.generation == self.generations[handle.index]
+        {
+            Some(&mut self.objects[handle.index])
+        } else {
+            None
+        }
+    }
+}
+
+pub trait RenderPass {
+    fn prepare(&mut self, app: &App);
+
+    fn render(&mut self, app: &App, encoder: &mut CommandEncoder, view: &TextureView);
+
+    fn cleanup(&mut self, app: &App);
+}
+
+use egui::epaint::ahash::HashMap;
+use glam::{Vec2, Vec3, Vec4};
+use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData};
+use wgpu::util::DeviceExt;
+use winit::window::Window;
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub uv: Vec2,
+}
+
+pub type MeshId = Id;
+
+pub struct MeshDescriptor {
+    pub positions: Vec<Vec3>,
+    pub normals: Vec<Vec3>,
+    pub uvs: Vec<Vec2>,
+    pub indices: Vec<u32>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct Mesh {
+    id: MeshId,
+    pub positions: Vec<Vec3>,
+    pub normals: Vec<Vec3>,
+    pub uvs: Vec<Vec2>,
+    pub indices: Vec<u32>,
+}
+
+impl Mesh {
+    pub fn new(descriptor: MeshDescriptor) -> Self {
+        Self {
+            id: MeshId::new(),
+            positions: descriptor.positions,
+            normals: descriptor.normals,
+            uvs: descriptor.uvs,
+            indices: descriptor.indices,
+        }
+    }
+
+    pub fn id(&self) -> MeshId {
+        self.id
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Material {}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct RenderInstance {
+    pub model_matrix_0: Vec4,
+    pub model_matrix_1: Vec4,
+    pub model_matrix_2: Vec4,
+    pub model_matrix_3: Vec4,
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct RenderMesh {
+    pub vertex_buffer_handle: Handle<wgpu::Buffer>,
+    pub vertex_offset: usize,
+    pub vertex_count: usize,
+    pub index_buffer_handle: Handle<wgpu::Buffer>,
+    pub index_offset: usize,
+    pub index_count: usize,
 }
 
 pub const DEPTH_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 pub const SCENE_OBJECT_INSTANCES_BUFFER_SIZE: u64 = 20 * 1024 * 1024; //20MB
 
+// Rename this to low level renderer or gpu interface?
 pub struct Renderer<'renderer> {
     pub window: Window,
     pub instance: wgpu::Instance,
@@ -123,9 +179,11 @@ pub struct Renderer<'renderer> {
 
     pub render_pass_resources: HashMap<&'renderer str, wgpu::Texture>,
 
-    pub scene_objects: Vec<RenderSceneObject>,
+    pub render_meshes: BTreeMap<MeshId, RenderMesh>,
+    missing_render_mesh_ids: RefCell<Vec<MeshId>>,
+
     pub scene_object_instances: wgpu::Buffer,
-    pub meshes: Pool<RenderMesh>,
+
     pub mesh_buffers: Pool<wgpu::Buffer>,
     pub depth_texture: wgpu::Texture,
     pub depth_texture_view: wgpu::TextureView,
@@ -234,14 +292,13 @@ impl<'renderer> Renderer<'renderer> {
             queue,
 
             render_pass_resources: Default::default(),
-
-            scene_objects: Default::default(),
+            missing_render_mesh_ids: RefCell::new(Vec::new()),
 
             depth_texture,
             depth_texture_view,
             sampler,
 
-            meshes: Default::default(),
+            render_meshes: Default::default(),
             mesh_buffers: Default::default(),
 
             _bind_group_cache: Default::default(),
@@ -252,42 +309,67 @@ impl<'renderer> Renderer<'renderer> {
         }
     }
 
-    pub fn add_mesh(&mut self, mesh: Mesh) -> Handle<RenderMesh> {
-        let vertex_data = mesh
-            .positions
-            .into_iter()
-            .zip(mesh.normals.into_iter())
-            .zip(mesh.uvs.into_iter())
-            .map(|((position, normal), uv)| Vertex {
-                position,
-                normal,
-                uv,
-            })
-            .collect::<Vec<_>>();
+    pub fn get_render_mesh(&self, mesh_id: &MeshId) -> Option<&RenderMesh> {
+        if *mesh_id == MeshId::EMPTY {
+            return None;
+        }
 
-        let vertex_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("vertex buffer"),
-                contents: bytemuck::cast_slice(vertex_data.as_slice()),
-                usage: wgpu::BufferUsages::VERTEX,
-            },
-        ));
+        if let Some(render_mesh) = self.render_meshes.get(&mesh_id) {
+            Some(render_mesh)
+        } else {
+            self.missing_render_mesh_ids
+                .borrow_mut()
+                .push(mesh_id.clone());
+            None
+        }
+    }
 
-        let index_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("index buffer"),
-                contents: bytemuck::cast_slice(mesh.indices.as_slice()),
-                usage: wgpu::BufferUsages::INDEX,
-            },
-        ));
+    pub fn create_render_meshes(&mut self, asset_server: &AssetServer) {
+        let mut missing_render_mesh_ids = self.missing_render_mesh_ids.borrow_mut();
 
-        self.meshes.add(RenderMesh {
-            vertex_buffer_handle,
-            vertex_offset: 0,
-            vertex_count: vertex_data.len(),
-            index_buffer_handle,
-            index_offset: 0,
-            index_count: mesh.indices.len(),
-        })
+        while missing_render_mesh_ids.len() > 0 {
+            let missing_render_mesh_id = missing_render_mesh_ids.pop().unwrap();
+            let mesh = asset_server.get(&missing_render_mesh_id).unwrap();
+
+            let vertex_data = mesh
+                .positions
+                .iter()
+                .zip(mesh.normals.iter())
+                .zip(mesh.uvs.iter())
+                .map(|((position, normal), uv)| Vertex {
+                    position: *position,
+                    normal: *normal,
+                    uv: *uv,
+                })
+                .collect::<Vec<_>>();
+
+            let vertex_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("vertex buffer"),
+                    contents: bytemuck::cast_slice(vertex_data.as_slice()),
+                    usage: wgpu::BufferUsages::VERTEX,
+                },
+            ));
+
+            let index_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("index buffer"),
+                    contents: bytemuck::cast_slice(mesh.indices.as_slice()),
+                    usage: wgpu::BufferUsages::INDEX,
+                },
+            ));
+
+            self.render_meshes.insert(
+                mesh.id,
+                RenderMesh {
+                    vertex_buffer_handle,
+                    vertex_offset: 0,
+                    vertex_count: vertex_data.len(),
+                    index_buffer_handle,
+                    index_offset: 0,
+                    index_count: mesh.indices.len(),
+                },
+            );
+        }
     }
 }

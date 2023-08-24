@@ -5,13 +5,67 @@ use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 use crate::{
-    egui_pass::EguiRenderPass, opaque_pass::OpaqueRenderPass, rendering::{Renderer, RenderPass},
-    shadow_pass::ShadowRenderPass, Camera, CameraUniform, Sun, SunUniform,
+    asset_server::{AssetServer, self},
+    egui_pass::EguiRenderPass,
+    opaque_pass::OpaqueRenderPass,
+    rendering::{RenderPass, Renderer},
+    shadow_pass::ShadowRenderPass,
+    Scene,
 };
 
+pub struct Sun {
+    pub inverse_direction: Vec3,
+    pub projection: Mat4,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SunUniform {
+    mvp: Mat4,
+}
+
+impl SunUniform {
+    pub fn update(&mut self, sun: &Sun) {
+        let view = Mat4::look_at_rh(sun.inverse_direction, Vec3::ZERO, Vec3::Y);
+        self.mvp = sun.projection * view;
+    }
+}
+
+pub struct Camera {
+    pub transform: Mat4,
+    pub projection: Mat4,
+}
+
+impl Camera {
+    fn new(transform: Mat4, projection: Mat4) -> Self {
+        Self {
+            transform,
+            projection,
+        }
+    }
+
+    fn build_view_projection_matrix(&self) -> Mat4 {
+        self.projection * self.transform
+    }
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CameraUniform {
+    pub view_projection: Mat4,
+}
+
+impl CameraUniform {
+    fn update_view_projection(&mut self, camera: &Camera) {
+        self.view_projection = camera.build_view_projection_matrix();
+    }
+}
+
 pub struct App<'app> {
+    pub asset_server: AssetServer,
     pub renderer: Renderer<'app>,
 
+    // Move this to high level renderer
     pub sun: Sun,
     sun_uniform: SunUniform,
     pub sun_buffer: wgpu::Buffer,
@@ -24,6 +78,7 @@ pub struct App<'app> {
     pub global_bind_group: wgpu::BindGroup,
 
     pub passes: Option<Rc<RefCell<Passes>>>,
+    pub scene: Scene,
 }
 
 pub struct Passes {
@@ -119,8 +174,12 @@ impl App<'_> {
                 }],
             });
 
+        let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
+
         Self {
+            asset_server,
             renderer,
+            scene: Default::default(),
             sun,
             sun_uniform,
             sun_buffer,
@@ -134,6 +193,8 @@ impl App<'_> {
     }
 
     pub fn pre_update(&mut self) {
+        self.renderer.create_render_meshes(&self.asset_server);
+
         self.camera_uniform.update_view_projection(&self.camera);
 
         self.renderer.queue.write_buffer(
@@ -151,10 +212,33 @@ impl App<'_> {
         );
 
         let instances = self
-            .renderer
+            .scene
+            .scene_object_hierarchy
             .scene_objects
             .iter()
-            .map(|scene_object| scene_object.transform)
+            .map(|mut scene_object| {
+                let mut transform = scene_object.transform;
+
+                loop {
+                    if let Some(parent_id) = scene_object.parent {
+                        let parent = self
+                            .scene
+                            .scene_object_hierarchy
+                            .scene_objects
+                            .iter()
+                            .find(|scene_object| scene_object.id == parent_id)
+                            .unwrap();
+
+                        transform *= parent.transform;
+
+                        scene_object = parent;
+                    } else {
+                        break;
+                    }
+                }
+
+                transform
+            })
             .collect::<Vec<_>>();
 
         self.renderer.queue.write_buffer(
@@ -196,5 +280,9 @@ impl App<'_> {
         passes.shadow_pass.cleanup(&self);
         passes.opaque_pass.cleanup(&self);
         passes.egui_pass.cleanup(&self);
+    }
+
+    pub fn close(&mut self) {
+        self.asset_server.write_to_file(&asset_server::DEFAULT_PATH)
     }
 }
