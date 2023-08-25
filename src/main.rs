@@ -191,6 +191,7 @@ fn main() {
                 app::update(&mut app);
 
                 ui::update(&mut app, &mut egui);
+                editor::update(&mut app, &mut egui, &mut editor);
                 editor::asset_browser::update(&mut app, &mut egui, &mut editor);
                 editor::hierarchy::update(&mut app, &mut egui, &mut editor);
                 editor::inspector::update(&mut app, &mut egui, &mut editor);

@@ -19,13 +19,10 @@ pub fn update(app: &mut App, egui: &mut Egui, editor: &mut Editor) {
             columns[1].text_edit_singleline(&mut sobj.name);
         });
 
-        ui.add_space(8.0);
         ui.separator();
+
+        ui.heading("Transform");
         ui.add_space(8.0);
-
-        ui.label("Transform");
-
-        ui.add_space(12.0);
 
         ui.columns(4, |columns| {
             columns[0].label("Position");
@@ -46,12 +43,11 @@ pub fn update(app: &mut App, egui: &mut Egui, editor: &mut Editor) {
             columns[3].add(DragValue::new(&mut sobj.scale.z).speed(0.25).suffix("x"));
         });
 
-        ui.add_space(8.0);
         ui.separator();
-        ui.add_space(8.0);
+        
 
-        ui.label("Mesh");
-        ui.add_space(12.0);
+        ui.heading("Mesh");
+        ui.add_space(8.0);
 
         ui.columns(2, |columns| {
             columns[0].label("Mesh ID:");
