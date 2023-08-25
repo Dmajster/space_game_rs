@@ -1,9 +1,13 @@
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(tuple_trait)]
+
 use app::App;
 use editor::Editor;
 use glam::{Mat4, Quat, Vec3};
-use rendering::MeshId;
+use rendering::{MeshId, Renderer};
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs, iter, path::Path};
+use std::{fmt, fs, path::Path};
 use ui::Egui;
 
 use winit::{
@@ -18,6 +22,7 @@ mod importing;
 mod opaque_pass;
 mod rendering;
 mod shadow_pass;
+mod test;
 mod ui;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -138,24 +143,41 @@ pub struct SceneHierarchy {
     pub nodes: Vec<SceneObject>,
 }
 
+pub struct EventExitGame {}
+
 fn main() {
     puffin_egui::puffin::set_scopes_on(true);
 
     let event_loop = EventLoop::new();
 
-    let mut app = App::new(&event_loop);
+    // let app = App::new(&event_loop);
 
-    let mut egui = Egui::new(&app.renderer);
+    let window = winit::window::WindowBuilder::new()
+        .with_title("Space game")
+        .with_maximized(true)
+        .build(&event_loop)
+        .unwrap();
 
-    let mut editor = Editor::new();
+    let renderer = Renderer::new(&window);
+    let egui = Egui::new(&window, &renderer);
+    let editor = Editor::new();
+
+    let mut test_app = test::App::default();
+    test_app.add_resource(window);
+    test_app.add_resource(renderer);
+    test_app.add_resource(egui);
+    test_app.add_resource(editor);
 
     event_loop.run(move |event, _, control_flow| {
+        let window = test_app.get_resource::<winit::window::Window>().unwrap();
+
         match event {
             Event::WindowEvent {
                 ref event,
                 window_id,
-            } if window_id == app.renderer.window.id() => {
-                let response = egui.handle_event(&event);
+            } if window_id == window.get().id() => {
+                let egui = test_app.get_resource_mut::<Egui>().unwrap();
+                let response = egui.get_mut().handle_event(&event);
 
                 if !response.consumed {
                     match event {
@@ -169,7 +191,12 @@ fn main() {
                                 },
                             ..
                         } => {
-                            app::close(&mut app);
+                            // let event_queue = test_app
+                            //     .get_resource_mut::<EventQueue<EventExitGame>>()
+                            //     .unwrap();
+
+                            // event_queue.get_mut().push_event(EventExitGame {});
+
                             *control_flow = ControlFlow::Exit
                         }
                         WindowEvent::Resized(_physical_size) => {
@@ -184,41 +211,38 @@ fn main() {
                     }
                 }
             }
-            Event::RedrawRequested(window_id) if window_id == app.renderer.window.id() => {
+            Event::MainEventsCleared => {
                 puffin_egui::puffin::profile_function!();
                 puffin_egui::puffin::GlobalProfiler::lock().new_frame();
 
-                app::update(&mut app);
+                // app::update(&mut app);
 
-                ui::update(&mut app, &mut egui);
-                editor::update(&mut app, &mut egui, &mut editor);
-                editor::asset_browser::update(&mut app, &mut egui, &mut editor);
-                editor::hierarchy::update(&mut app, &mut egui, &mut editor);
-                editor::inspector::update(&mut app, &mut egui, &mut editor);
+                // ui::update(&mut app, &mut egui);
+                // editor::update(&mut app, &mut egui, &mut editor);
+                // editor::asset_browser::update(&mut app, &mut egui, &mut editor);
+                // editor::hierarchy::update(&mut app, &mut egui, &mut editor);
+                // editor::inspector::update(&mut app, &mut egui, &mut editor);
 
-                let output = app.renderer.surface.get_current_texture().unwrap();
-                let view = output
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
+                // let output = app.renderer.surface.get_current_texture().unwrap();
+                // let view = output
+                //     .texture
+                //     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder =
-                    app.renderer
-                        .device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("Render Encoder"),
-                        });
+                // let mut encoder =
+                //     app.renderer
+                //         .device
+                //         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                //             label: Some("Render Encoder"),
+                //         });
 
-                shadow_pass::render(&app, &mut encoder);
-                opaque_pass::render(&app, &mut encoder, &view);
-                ui::render(&mut app, &mut egui, &mut encoder, &view);
+                // shadow_pass::render(&app, &mut encoder);
+                // opaque_pass::render(&app, &mut encoder, &view);
+                // ui::render(&mut app, &mut egui, &mut encoder, &view);
 
-                app.renderer.queue.submit(iter::once(encoder.finish()));
-                output.present();
+                // app.renderer.queue.submit(iter::once(encoder.finish()));
+                // output.present();
 
-                ui::post_render(&mut egui);
-            }
-            Event::MainEventsCleared => {
-                app.renderer.window.request_redraw();
+                // ui::post_render(&mut egui);
             }
             _ => {}
         }

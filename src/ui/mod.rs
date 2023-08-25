@@ -1,9 +1,10 @@
-use crate::{rendering::Renderer, App};
+use crate::rendering::Renderer;
 use egui::ClippedPrimitive;
 use egui::FullOutput;
 use egui_wgpu::renderer::ScreenDescriptor;
 use egui_winit::EventResponse;
 use winit::event::WindowEvent;
+use winit::window::Window;
 
 pub struct Egui {
     pub context: egui::Context,
@@ -15,9 +16,9 @@ pub struct Egui {
 }
 
 impl Egui {
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(window: &Window, renderer: &Renderer) -> Self {
         let egui_context = egui::Context::default();
-        let egui_state = egui_winit::State::new(&renderer.window);
+        let egui_state = egui_winit::State::new(&window);
         let egui_full_output = FullOutput::default();
 
         Self {
@@ -27,10 +28,7 @@ impl Egui {
             renderer: egui_wgpu::Renderer::new(&renderer.device, renderer.surface_format, None, 1),
             clipped_primitives: vec![],
             screen_descriptor: ScreenDescriptor {
-                size_in_pixels: [
-                    renderer.window.inner_size().width,
-                    renderer.window.inner_size().height,
-                ],
+                size_in_pixels: [window.inner_size().width, window.inner_size().height],
                 pixels_per_point: 1.0,
             },
         }
@@ -41,14 +39,15 @@ impl Egui {
     }
 }
 
-pub fn update(app: &mut App, egui: &mut Egui) {
-    let raw_input = egui.state.take_egui_input(&app.renderer.window);
+pub fn update(window: &mut Window, egui: &mut Egui) {
+    let raw_input = egui.state.take_egui_input(&window);
 
     egui.context.begin_frame(raw_input);
 }
 
 pub fn render(
-    app: &mut App,
+    window: &mut Window,
+    renderer: &mut Renderer,
     egui: &mut Egui,
     encoder: &mut wgpu::CommandEncoder,
     view: &wgpu::TextureView,
@@ -59,18 +58,18 @@ pub fn render(
 
     for (id, image_delta) in &egui.full_output.textures_delta.set {
         egui.renderer
-            .update_texture(&app.renderer.device, &app.renderer.queue, *id, image_delta);
+            .update_texture(&renderer.device, &renderer.queue, *id, image_delta);
     }
 
     egui.state.handle_platform_output(
-        &app.renderer.window,
+        &window,
         &egui.context,
         egui.full_output.platform_output.clone(),
     );
 
     egui.renderer.update_buffers(
-        &app.renderer.device,
-        &app.renderer.queue,
+        &renderer.device,
+        &renderer.queue,
         encoder,
         egui.clipped_primitives.as_slice(),
         &egui.screen_descriptor,

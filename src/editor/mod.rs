@@ -14,16 +14,10 @@ pub struct Editor {
     tree: Tree<String>,
 }
 
-
 pub struct EditorTab {
     pub name: String,
-    pub draw_fm: Box<dyn Fn(&mut App, &mut Egui, &mut Editor)>
+    pub draw_fm: Box<dyn Fn(&mut App, &mut Egui, &mut Editor)>,
 }
-
-
-
-
-
 
 impl Editor {
     pub fn new() -> Self {

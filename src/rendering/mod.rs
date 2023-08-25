@@ -169,7 +169,6 @@ pub const SCENE_OBJECT_INSTANCES_BUFFER_SIZE: u64 = 20 * 1024 * 1024; //20MB
 
 // Rename this to low level renderer or gpu interface?
 pub struct Renderer<'renderer> {
-    pub window: Window,
     pub instance: wgpu::Instance,
     pub surface: wgpu::Surface,
     pub surface_capabilities: wgpu::SurfaceCapabilities,
@@ -203,13 +202,13 @@ pub struct Renderer<'renderer> {
 }
 
 impl<'renderer> Renderer<'renderer> {
-    pub fn new(window: Window) -> Self {
+    pub fn new(window: &Window) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::DX12,
             dx12_shader_compiler: Default::default(),
         });
 
-        let surface = unsafe { instance.create_surface(&window) }.unwrap();
+        let surface = unsafe { instance.create_surface(window) }.unwrap();
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
@@ -283,7 +282,6 @@ impl<'renderer> Renderer<'renderer> {
         });
 
         Self {
-            window,
             surface,
             surface_capabilities,
             surface_format,

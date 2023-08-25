@@ -1,6 +1,5 @@
 use glam::{Mat4, Vec3};
-use wgpu::util::DeviceExt;
-use winit::{event_loop::EventLoop, window::WindowBuilder};
+use winit::event_loop::EventLoop;
 
 use crate::{
     asset_server::{self, AssetServer},
@@ -83,100 +82,96 @@ pub struct App<'app> {
 
 impl App<'_> {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let window = WindowBuilder::new()
-            .with_title("Space game")
-            .with_maximized(true)
-            .build(event_loop)
-            .unwrap();
+        todo!();
 
-        let mut renderer = Renderer::new(window);
+        // let mut renderer = Renderer::new(window);
 
-        let sun = Sun {
-            inverse_direction: Vec3::new(4.0, 5.0, 1.0),
-            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 20.0, 0.1),
-        };
+        // let sun = Sun {
+        //     inverse_direction: Vec3::new(4.0, 5.0, 1.0),
+        //     projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 20.0, 0.1),
+        // };
 
-        let sun_uniform = SunUniform::default();
+        // let sun_uniform = SunUniform::default();
 
-        let sun_buffer = renderer
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("shadow pass bind group sun buffer"),
-                contents: bytemuck::cast_slice(&[sun_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        // let sun_buffer = renderer
+        //     .device
+        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("shadow pass bind group sun buffer"),
+        //         contents: bytemuck::cast_slice(&[sun_uniform]),
+        //         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        //     });
 
-        let camera = Camera::new(
-            Mat4::look_at_rh(Vec3::new(0.0, 5.0, 5.0), Vec3::ZERO, Vec3::Y),
-            Mat4::perspective_infinite_reverse_rh(
-                90.0f32.to_radians(),
-                renderer.window.inner_size().width as f32
-                    / renderer.window.inner_size().height as f32,
-                0.1,
-            ),
-        );
+        // let camera = Camera::new(
+        //     Mat4::look_at_rh(Vec3::new(0.0, 5.0, 5.0), Vec3::ZERO, Vec3::Y),
+        //     Mat4::perspective_infinite_reverse_rh(
+        //         90.0f32.to_radians(),
+        //         renderer.window.inner_size().width as f32
+        //             / renderer.window.inner_size().height as f32,
+        //         0.1,
+        //     ),
+        // );
 
-        let camera_uniform = CameraUniform::default();
+        // let camera_uniform = CameraUniform::default();
 
-        let camera_buffer = renderer
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("renderer bind group camera buffer"),
-                contents: bytemuck::cast_slice(&[camera_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        // let camera_buffer = renderer
+        //     .device
+        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("renderer bind group camera buffer"),
+        //         contents: bytemuck::cast_slice(&[camera_uniform]),
+        //         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        //     });
 
-        let global_bind_group_layout =
-            renderer
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("renderer bind group layout"),
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::all(),
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
+        // let global_bind_group_layout =
+        //     renderer
+        //         .device
+        //         .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        //             label: Some("renderer bind group layout"),
+        //             entries: &[wgpu::BindGroupLayoutEntry {
+        //                 binding: 0,
+        //                 visibility: wgpu::ShaderStages::all(),
+        //                 ty: wgpu::BindingType::Buffer {
+        //                     ty: wgpu::BufferBindingType::Uniform,
+        //                     has_dynamic_offset: false,
+        //                     min_binding_size: None,
+        //                 },
+        //                 count: None,
+        //             }],
+        //         });
 
-        let global_bind_group = renderer
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("renderer bind group"),
-                layout: &global_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }],
-            });
+        // let global_bind_group = renderer
+        //     .device
+        //     .create_bind_group(&wgpu::BindGroupDescriptor {
+        //         label: Some("renderer bind group"),
+        //         layout: &global_bind_group_layout,
+        //         entries: &[wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: camera_buffer.as_entire_binding(),
+        //         }],
+        //     });
 
-        let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
-        let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
-        let egui = Egui::new(&renderer);
+        // let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
+        // let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
+        // let egui = Egui::new(&renderer);
 
-        let shadow_pass = ShadowRenderPass::new(&mut renderer, &sun_buffer);
-        let opaque_pass = OpaqueRenderPass::new(&renderer, &global_bind_group_layout, &sun_buffer);
+        // let shadow_pass = ShadowRenderPass::new(&mut renderer, &sun_buffer);
+        // let opaque_pass = OpaqueRenderPass::new(&renderer, &global_bind_group_layout, &sun_buffer);
 
-        Self {
-            asset_server,
-            renderer,
-            egui,
-            scene,
-            sun,
-            sun_uniform,
-            sun_buffer,
-            camera,
-            camera_uniform,
-            camera_buffer,
-            global_bind_group_layout,
-            global_bind_group,
-            shadow_pass,
-            opaque_pass,
-        }
+        // Self {
+        //     asset_server,
+        //     renderer,
+        //     egui,
+        //     scene,
+        //     sun,
+        //     sun_uniform,
+        //     sun_buffer,
+        //     camera,
+        //     camera_uniform,
+        //     camera_buffer,
+        //     global_bind_group_layout,
+        //     global_bind_group,
+        //     shadow_pass,
+        //     opaque_pass,
+        // }
     }
 }
 
