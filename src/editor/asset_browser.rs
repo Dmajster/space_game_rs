@@ -1,4 +1,4 @@
-use egui::Window;
+use egui::{ScrollArea, Window};
 use native_dialog::FileDialog;
 
 use crate::app::App;
@@ -24,16 +24,25 @@ pub fn update(app: &mut App, egui: &mut Egui, editor: &mut Editor) {
 
         ui.separator();
 
-        ui.columns(column_count, |columns| {
-            for (index, mesh) in app.asset_server.get_meshes().iter().enumerate() {
-                let wrapped_index = index % column_count;
+        ScrollArea::vertical().show(ui, |scroll_area| {
+            scroll_area.columns(column_count, |columns| {
+                for mut i in 0..app.asset_server.get_meshes().len() {
+                    let wrapped_index = i % column_count;
 
-                columns[wrapped_index].group(|ui| {
-                    ui.label(&mesh.name);
-                    ui.label(format!("vertices: {}", mesh.positions.len()));
-                    ui.label(format!("indices: {}", mesh.indices.len()));
-                });
-            }
+                    columns[wrapped_index].group(|ui| {
+                        if let Some(mesh) = app.asset_server.get_mesh_at_index(i) {
+                            ui.label(&mesh.name);
+                            ui.label(format!("vertices: {}", mesh.positions.len()));
+                            ui.label(format!("indices: {}", mesh.indices.len()));
+
+                            if ui.button("delete").clicked() {
+                                app.asset_server.remove_mesh_at_index(i);
+                                i -= 1;
+                            }
+                        }
+                    });
+                }
+            })
         });
     });
 }

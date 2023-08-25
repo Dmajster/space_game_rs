@@ -45,7 +45,15 @@ impl AssetServer {
         self.meshes.iter().find(|mesh| mesh.id() == *mesh_id)
     }
 
+    pub fn get_mesh_at_index(&self, index: usize) -> Option<&Mesh> {
+        self.meshes.get(index)
+    }
+
     pub fn get_meshes(&self) -> &Vec<Mesh> {
         &self.meshes
+    }
+
+    pub fn remove_mesh_at_index(&mut self, index: usize) {
+        self.meshes.remove(index);
     }
 }
