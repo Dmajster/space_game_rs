@@ -1,6 +1,8 @@
 use crate::{
-    rendering::{self, RenderInstance, Renderer, Vertex},
-    App,
+    app::{Res, ResMut},
+    game::Game,
+    rendering::{self, RenderInstance, Renderer, Vertex, RenderingRecorder},
+    Scene,
 };
 
 pub const SHADOW_PASS_TEXTURE_SIZE: u32 = 2048;
@@ -80,7 +82,7 @@ impl ShadowRenderPass {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shadow pass shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../assets/shaders/shadow_pass.wgsl").into(),
+                    include_str!("../../assets/shaders/shadow_pass.wgsl").into(),
                 ),
             });
 
@@ -135,12 +137,23 @@ impl ShadowRenderPass {
     }
 }
 
-pub fn render(app: &App, encoder: &mut wgpu::CommandEncoder) {
-    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+pub fn render(
+    game: Res<Game>,
+    scene: Res<Scene>,
+    renderer: Res<Renderer>,
+    rendering_recorder: ResMut<Option<RenderingRecorder>>,
+) {
+    let game = game.get();
+    let scene = scene.get();
+    let renderer = renderer.get();
+    let mut rendering_recorder = rendering_recorder.get_mut();
+    let rendering_recorder = rendering_recorder.as_mut().unwrap();
+
+    let mut render_pass = rendering_recorder.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("shadow pass"),
         color_attachments: &[],
         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &app.shadow_pass.texture_view,
+            view: &game.shadow_pass.texture_view,
             depth_ops: Some(wgpu::Operations {
                 load: wgpu::LoadOp::Clear(0.0),
                 store: true,
@@ -149,19 +162,17 @@ pub fn render(app: &App, encoder: &mut wgpu::CommandEncoder) {
         }),
     });
 
-    render_pass.set_pipeline(&app.shadow_pass.pipeline);
-    render_pass.set_bind_group(0, &app.shadow_pass.bind_group, &[]);
-    render_pass.set_vertex_buffer(1, app.renderer.scene_object_instances.slice(..));
+    render_pass.set_pipeline(&game.shadow_pass.pipeline);
+    render_pass.set_bind_group(0, &game.shadow_pass.bind_group, &[]);
+    render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
 
-    for (index, scene_object) in app.scene.scene_object_hierarchy.nodes.iter().enumerate() {
-        if let Some(render_mesh) = app.renderer.get_render_mesh(&scene_object.mesh_id) {
-            let vertex_buffer = app
-                .renderer
+    for (index, scene_object) in scene.scene_object_hierarchy.nodes.iter().enumerate() {
+        if let Some(render_mesh) = renderer.get_render_mesh(&scene_object.mesh_id) {
+            let vertex_buffer = renderer
                 .mesh_buffers
                 .get(&render_mesh.vertex_buffer_handle)
                 .unwrap();
-            let index_buffer = app
-                .renderer
+            let index_buffer = renderer
                 .mesh_buffers
                 .get(&render_mesh.index_buffer_handle)
                 .unwrap();

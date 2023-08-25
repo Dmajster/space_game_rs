@@ -1,7 +1,7 @@
 use egui::{CentralPanel, Frame};
 use egui_dock::{DockArea, Style, Tree};
 
-use crate::{app::App, ui::Egui, SceneObjectId};
+use crate::{app::ResMut, ui::Egui, SceneObjectId};
 
 pub mod asset_browser;
 pub mod hierarchy;
@@ -14,11 +14,6 @@ pub struct Editor {
     tree: Tree<String>,
 }
 
-pub struct EditorTab {
-    pub name: String,
-    pub draw_fm: Box<dyn Fn(&mut App, &mut Egui, &mut Editor)>,
-}
-
 impl Editor {
     pub fn new() -> Self {
         Self {
@@ -29,11 +24,13 @@ impl Editor {
     }
 }
 
-pub fn update(app: &mut App, egui: &mut Egui, editor: &mut Editor) {
+pub fn update(egui: ResMut<Egui>, editor: ResMut<Editor>) {
+    let egui = egui.get_mut();
+
     CentralPanel::default()
         .frame(Frame::central_panel(&egui.context.style()).inner_margin(0.))
-        .show(&egui.context, |ui| {
-            DockArea::new(&mut editor.tree)
+        .show(&egui.context, |_| {
+            DockArea::new(&mut editor.get_mut().tree)
                 .style(Style::from_egui(egui.context.style().as_ref()))
                 .show(&egui.context, &mut TabViewer {});
         });

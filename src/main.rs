@@ -3,9 +3,11 @@
 #![feature(tuple_trait)]
 
 use app::App;
+use asset_server::AssetServer;
 use editor::Editor;
+use game::Game;
 use glam::{Mat4, Quat, Vec3};
-use rendering::{MeshId, Renderer};
+use rendering::{MeshId, Renderer, RenderingRecorder};
 use serde::{Deserialize, Serialize};
 use std::{fmt, fs, path::Path};
 use ui::Egui;
@@ -18,11 +20,9 @@ use winit::{
 mod app;
 mod asset_server;
 mod editor;
+mod game;
 mod importing;
-mod opaque_pass;
 mod rendering;
-mod shadow_pass;
-mod test;
 mod ui;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -143,14 +143,10 @@ pub struct SceneHierarchy {
     pub nodes: Vec<SceneObject>,
 }
 
-pub struct EventExitGame {}
-
 fn main() {
     puffin_egui::puffin::set_scopes_on(true);
 
     let event_loop = EventLoop::new();
-
-    // let app = App::new(&event_loop);
 
     let window = winit::window::WindowBuilder::new()
         .with_title("Space game")
@@ -158,25 +154,40 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let renderer = Renderer::new(&window);
+    let mut renderer = Renderer::new(&window);
     let egui = Egui::new(&window, &renderer);
     let editor = Editor::new();
+    let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
+    let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
+    let game = Game::new(&event_loop, &mut renderer, &window);
 
-    let mut test_app = test::App::default();
-    test_app.add_resource(window);
-    test_app.add_resource(renderer);
-    test_app.add_resource(egui);
-    test_app.add_resource(editor);
+    let mut app = App::default();
+    app.add_resource(game);
+    app.add_resource(window);
+    app.add_resource(renderer);
+    app.add_resource(egui);
+    app.add_resource(editor);
+    app.add_resource(asset_server);
+    app.add_resource(scene);
+    app.add_system(game::update);
+    app.add_system(ui::update);
+    app.add_system(editor::update);
+    app.add_system(editor::asset_browser::update);
+    app.add_resource::<Option<RenderingRecorder>>(None);
+    app.add_system(rendering::record);
+    app.add_system(game::shadow_pass::render);
+    app.add_system(game::opaque_pass::render);
+    app.add_system(rendering::present);
 
     event_loop.run(move |event, _, control_flow| {
-        let window = test_app.get_resource::<winit::window::Window>().unwrap();
+        let window = app.get_resource::<winit::window::Window>().unwrap();
 
         match event {
             Event::WindowEvent {
                 ref event,
                 window_id,
             } if window_id == window.get().id() => {
-                let egui = test_app.get_resource_mut::<Egui>().unwrap();
+                let egui = app.get_resource_mut::<Egui>().unwrap();
                 let response = egui.get_mut().handle_event(&event);
 
                 if !response.consumed {
@@ -215,32 +226,11 @@ fn main() {
                 puffin_egui::puffin::profile_function!();
                 puffin_egui::puffin::GlobalProfiler::lock().new_frame();
 
-                // app::update(&mut app);
-
-                // ui::update(&mut app, &mut egui);
-                // editor::update(&mut app, &mut egui, &mut editor);
-                // editor::asset_browser::update(&mut app, &mut egui, &mut editor);
-                // editor::hierarchy::update(&mut app, &mut egui, &mut editor);
-                // editor::inspector::update(&mut app, &mut egui, &mut editor);
-
-                // let output = app.renderer.surface.get_current_texture().unwrap();
-                // let view = output
-                //     .texture
-                //     .create_view(&wgpu::TextureViewDescriptor::default());
-
-                // let mut encoder =
-                //     app.renderer
-                //         .device
-                //         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                //             label: Some("Render Encoder"),
-                //         });
+                app.execute();
 
                 // shadow_pass::render(&app, &mut encoder);
                 // opaque_pass::render(&app, &mut encoder, &view);
                 // ui::render(&mut app, &mut egui, &mut encoder, &view);
-
-                // app.renderer.queue.submit(iter::once(encoder.finish()));
-                // output.present();
 
                 // ui::post_render(&mut egui);
             }

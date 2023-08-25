@@ -1,5 +1,5 @@
 use std::{
-    any::{Any, TypeId},
+    any::{type_name, Any, TypeId},
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     marker::PhantomData,
@@ -9,7 +9,7 @@ use std::{
 #[derive(Default)]
 pub struct App {
     resources: HashMap<TypeId, Rc<dyn Any>>,
-    systems: Vec<Rc<dyn System>>,
+    update_systems: Vec<Rc<dyn System>>,
 }
 
 impl App {
@@ -51,39 +51,22 @@ impl App {
 
     pub fn add_system<S, I>(&mut self, system: S)
     where
-        S: Fn<(I,), Output = ()> + 'static,
-        I: 'static,
-        SystemWrapper<S, (I,)>: System,
+        S: Fn<I, Output = ()> + 'static,
+        I: std::marker::Tuple + 'static,
+        SystemWrapper<S, I>: System,
     {
-        self.systems.push(Rc::new(SystemWrapper {
+        self.update_systems.push(Rc::new(SystemWrapper {
             system,
             _pd: PhantomData,
         }))
     }
 
     pub fn execute(&self) {
-        for system in &self.systems {
+        for system in &self.update_systems {
             system.execute(&self)
         }
     }
 }
-
-// #[derive(Debug)]
-// pub struct EventQueue<T> {
-//     events: Vec<T>,
-// }
-
-// impl<T> EventQueue<T> {
-//     pub fn push_event(&mut self, event: T) {
-//         self.events.push(event);
-//     }
-// }
-
-// impl<T> Default for EventQueue<T> {
-//     fn default() -> Self {
-//         Self { events: vec![] }
-//     }
-// }
 
 pub trait SystemParameter {
     type BorrowedFromApp;
@@ -97,18 +80,11 @@ pub struct Res<T> {
 
 impl<T> Res<T> {
     pub fn get(&self) -> Ref<'_, T> {
-        self.rc.borrow()
+        self.rc
+            .try_borrow()
+            .expect(&format!("borrow error resource: '{}'", type_name::<T>()))
     }
 }
-
-// impl<T> Debug for Resource<T>
-// where
-//     T: Debug,
-// {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("Resource").field("rc", &self.rc).finish()
-//     }
-// }
 
 impl<T> SystemParameter for Res<T>
 where
@@ -117,7 +93,10 @@ where
     type BorrowedFromApp = Res<T>;
 
     fn get_from_world(app: &App) -> Self::BorrowedFromApp {
-        app.get_resource::<T>().unwrap()
+        app.get_resource::<T>().expect(&format!(
+            "failed getting resource: '{}' from world",
+            type_name::<T>()
+        ))
     }
 }
 
@@ -127,18 +106,15 @@ pub struct ResMut<T> {
 
 impl<T> ResMut<T> {
     pub fn get_mut(&self) -> RefMut<'_, T> {
-        self.rc.borrow_mut()
+        self.rc
+            .try_borrow_mut()
+            .expect(&format!("borrow error resource: '{}'", type_name::<T>()))
+    }
+
+    pub fn replace(&self, value: T) -> T {
+        self.rc.replace(value)
     }
 }
-
-// impl<T> Debug for ResourceMut<T>
-// where
-//     T: Debug,
-// {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("Resource").field("rc", &self.rc).finish()
-//     }
-// }
 
 impl<T> SystemParameter for ResMut<T>
 where
@@ -147,7 +123,10 @@ where
     type BorrowedFromApp = ResMut<T>;
 
     fn get_from_world(app: &App) -> Self::BorrowedFromApp {
-        app.get_resource_mut::<T>().unwrap()
+        app.get_resource_mut::<T>().expect(&format!(
+            "failed getting resource {} from world",
+            type_name::<T>()
+        ))
     }
 }
 

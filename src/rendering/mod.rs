@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{asset_server::AssetServer, Id};
+use crate::{
+    app::{Res, ResMut},
+    asset_server::AssetServer,
+    Id,
+};
 
 #[derive(Debug)]
 pub struct Handle<T> {
@@ -84,7 +88,7 @@ impl<T> Pool<T> {
 
 use egui::epaint::ahash::HashMap;
 use glam::{Vec2, Vec3, Vec4};
-use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData};
+use std::{cell::RefCell, collections::BTreeMap, iter, marker::PhantomData};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -372,4 +376,48 @@ impl<'renderer> Renderer<'renderer> {
             );
         }
     }
+}
+
+pub struct RenderingRecorder {
+    pub output: wgpu::SurfaceTexture,
+    pub view: wgpu::TextureView,
+    pub encoder: wgpu::CommandEncoder,
+}
+
+pub fn record(renderer: Res<Renderer>, rendering_recorder: ResMut<Option<RenderingRecorder>>) {
+    let renderer = renderer.get();
+    let mut rendering_recorder = rendering_recorder.get_mut();
+
+    let output = renderer.surface.get_current_texture().unwrap();
+    let view = output
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
+
+    let encoder = renderer
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+
+    *rendering_recorder = Some(RenderingRecorder {
+        output,
+        view,
+        encoder,
+    });
+}
+
+pub fn present(renderer: Res<Renderer>, rendering_recorder_2: ResMut<Option<RenderingRecorder>>) {
+    let renderer = renderer.get();
+
+    let RenderingRecorder {
+        output,
+        view: _,
+        encoder,
+    } = rendering_recorder_2.replace(None).unwrap();
+
+    renderer.queue.submit(iter::once(encoder.finish()));
+
+    output.present();
+
+    *rendering_recorder_2.get_mut() = None;
 }

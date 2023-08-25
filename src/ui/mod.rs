@@ -1,4 +1,5 @@
 use crate::rendering::Renderer;
+use crate::app::ResMut;
 use egui::ClippedPrimitive;
 use egui::FullOutput;
 use egui_wgpu::renderer::ScreenDescriptor;
@@ -39,10 +40,10 @@ impl Egui {
     }
 }
 
-pub fn update(window: &mut Window, egui: &mut Egui) {
-    let raw_input = egui.state.take_egui_input(&window);
+pub fn update(window: ResMut<Window>, egui: ResMut<Egui>) {
+    let raw_input = egui.get_mut().state.take_egui_input(&window.get_mut());
 
-    egui.context.begin_frame(raw_input);
+    egui.get_mut().context.begin_frame(raw_input);
 }
 
 pub fn render(
