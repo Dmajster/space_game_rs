@@ -1,10 +1,10 @@
 use glam::{Vec2, Vec3};
-use gltf::{Gltf, Semantic};
+use gltf::{accessor::DataType, Gltf, Semantic};
 use std::{fs, mem, path::Path};
 
-use crate::{asset_server::AssetServer, rendering::MeshDescriptor, Scene};
+use crate::{asset_server::AssetServer, rendering::MeshDescriptor};
 
-pub fn load<P>(path: &P, asset_server: &mut AssetServer, scene: &mut Scene)
+pub fn load<P>(path: &P, asset_server: &mut AssetServer)
 where
     P: AsRef<Path>,
 {
@@ -12,6 +12,8 @@ where
 
     for mesh in gltf.meshes() {
         for primitive in mesh.primitives() {
+            let name = mesh.name().unwrap_or("").to_owned();
+
             let positions = primitive
                 .attributes()
                 .find_map(|(semantic, accessor)| {
@@ -45,9 +47,21 @@ where
                 })
                 .unwrap();
 
-            let indices = get_data_from_accessor::<P, u32>(&path, &primitive.indices().unwrap());
+            let indices = match primitive.indices().unwrap().data_type() {
+                DataType::U16 => {
+                    get_data_from_accessor::<P, u16>(&path, &primitive.indices().unwrap())
+                        .into_iter()
+                        .map(|index| index as u32)
+                        .collect::<Vec<_>>()
+                }
+                DataType::U32 => {
+                    get_data_from_accessor::<P, u32>(&path, &primitive.indices().unwrap())
+                }
+                _ => todo!(),
+            };
 
             asset_server.add_mesh_from_desc(MeshDescriptor {
+                name,
                 positions,
                 normals,
                 uvs,

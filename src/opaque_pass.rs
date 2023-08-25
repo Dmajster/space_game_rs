@@ -1,5 +1,5 @@
 use crate::{
-    rendering::{self, RenderInstance, RenderPass, Vertex},
+    rendering::{self, RenderInstance, Renderer, Vertex},
     App,
 };
 
@@ -9,9 +9,13 @@ pub struct OpaqueRenderPass {
 }
 
 impl OpaqueRenderPass {
-    pub fn new(app: &App) -> Self {
+    pub fn new(
+        renderer: &Renderer,
+        global_bind_group_layout: &wgpu::BindGroupLayout,
+        sun_buffer: &wgpu::Buffer,
+    ) -> Self {
         let bind_group_layout =
-            app.renderer
+            renderer
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("opaque pass bind group layout"),
@@ -48,15 +52,13 @@ impl OpaqueRenderPass {
                     ],
                 });
 
-        let shadow_depth_texture_view = &app
-            .renderer
+        let shadow_depth_texture_view = &renderer
             .render_pass_resources
             .get("shadow depth")
             .unwrap()
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let bind_group = app
-            .renderer
+        let bind_group = renderer
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("opaque pass bind group"),
@@ -66,13 +68,13 @@ impl OpaqueRenderPass {
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::Buffer(
-                            app.sun_buffer.as_entire_buffer_binding(),
+                            sun_buffer.as_entire_buffer_binding(),
                         ),
                     },
                     // Depth sampler
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&app.renderer.sampler),
+                        resource: wgpu::BindingResource::Sampler(&renderer.sampler),
                     },
                     // Shadow depth texture
                     wgpu::BindGroupEntry {
@@ -83,16 +85,15 @@ impl OpaqueRenderPass {
             });
 
         let pipeline_layout =
-            app.renderer
+            renderer
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("opaque pass pipeline layout"),
-                    bind_group_layouts: &[&app.global_bind_group_layout, &bind_group_layout], //&bind_group_layout
+                    bind_group_layouts: &[&global_bind_group_layout, &bind_group_layout], //&bind_group_layout
                     push_constant_ranges: &[],
                 });
 
-        let shader = app
-            .renderer
+        let shader = renderer
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("opaque pass shader"),
@@ -101,7 +102,7 @@ impl OpaqueRenderPass {
                 ),
             });
 
-        let pipeline = app.renderer
+        let pipeline = renderer
         .device
         .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("opaque pass render pipeline"),
@@ -145,7 +146,7 @@ impl OpaqueRenderPass {
                 entry_point: "fs_main",
                 targets: &[
                     Some(wgpu::ColorTargetState {
-                        format: app.renderer.surface_format,
+                        format: renderer.surface_format,
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     })
@@ -161,69 +162,62 @@ impl OpaqueRenderPass {
     }
 }
 
-impl RenderPass for OpaqueRenderPass {
-    fn prepare(&mut self, _app: &App) {}
-
-    fn render(&mut self, app: &App, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("opaque render pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.52,
-                        g: 0.80,
-                        b: 0.92,
-                        a: 1.0,
-                    }),
-                    store: true,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &app.renderer.depth_texture_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(0.0),
-                    store: true,
+pub fn render(
+    app: &App,
+    encoder: &mut wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
+) {
+    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("opaque render pass"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: 0.52,
+                    g: 0.80,
+                    b: 0.92,
+                    a: 1.0,
                 }),
-                stencil_ops: None,
+                store: true,
+            },
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: &app.renderer.depth_texture_view,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Clear(0.0),
+                store: true,
             }),
-        });
+            stencil_ops: None,
+        }),
+    });
 
-        render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &app.global_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.bind_group, &[]);
-        render_pass.set_vertex_buffer(1, app.renderer.scene_object_instances.slice(..));
+    render_pass.set_pipeline(&app.opaque_pass.pipeline);
+    render_pass.set_bind_group(0, &app.global_bind_group, &[]);
+    render_pass.set_bind_group(1, &app.opaque_pass.bind_group, &[]);
+    render_pass.set_vertex_buffer(1, app.renderer.scene_object_instances.slice(..));
 
-        for (index, scene_object) in app
-            .scene
-            .scene_object_hierarchy
-            .scene_objects
-            .iter()
-            .enumerate()
-        {
-            if let Some(render_mesh) = app.renderer.get_render_mesh(&scene_object.mesh_id) {
-                let vertex_buffer = app
-                    .renderer
-                    .mesh_buffers
-                    .get(&render_mesh.vertex_buffer_handle)
-                    .unwrap();
-                let index_buffer = app
-                    .renderer
-                    .mesh_buffers
-                    .get(&render_mesh.index_buffer_handle)
-                    .unwrap();
+    for (index, scene_object) in app.scene.scene_object_hierarchy.nodes.iter().enumerate() {
+        if let Some(render_mesh) = app.renderer.get_render_mesh(&scene_object.mesh_id) {
+            let vertex_buffer = app
+                .renderer
+                .mesh_buffers
+                .get(&render_mesh.vertex_buffer_handle)
+                .unwrap();
+            let index_buffer = app
+                .renderer
+                .mesh_buffers
+                .get(&render_mesh.index_buffer_handle)
+                .unwrap();
 
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(
-                    render_mesh.index_offset as u32..(render_mesh.index_offset + render_mesh.index_count) as u32,
-                    render_mesh.vertex_offset as i32,
-                    index as u32..(index + 1) as u32,
-                );
-            }
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(
+                render_mesh.index_offset as u32
+                    ..(render_mesh.index_offset + render_mesh.index_count) as u32,
+                render_mesh.vertex_offset as i32,
+                index as u32..(index + 1) as u32,
+            );
         }
     }
-
-    fn cleanup(&mut self, _app: &App) {}
 }

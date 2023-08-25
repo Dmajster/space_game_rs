@@ -1,8 +1,10 @@
-use app::{App, Passes};
+use app::App;
+use editor::Editor;
 use glam::{Mat4, Quat, Vec3};
 use rendering::MeshId;
 use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, fmt, fs, path::Path, rc::Rc};
+use std::{fmt, fs, iter, path::Path};
+use ui::Egui;
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -11,11 +13,12 @@ use winit::{
 
 mod app;
 mod asset_server;
-mod egui;
+mod editor;
 mod importing;
 mod opaque_pass;
 mod rendering;
 mod shadow_pass;
+mod ui;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
@@ -48,7 +51,7 @@ pub type SceneObjectId = Id;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Scene {
-    pub scene_object_hierarchy: SceneObjectHierarchy,
+    pub scene_object_hierarchy: SceneHierarchy,
 }
 
 impl Scene {
@@ -77,7 +80,8 @@ impl Scene {
     }
 
     pub fn add(&mut self) -> &mut SceneObject {
-        self.scene_object_hierarchy.scene_objects.push(SceneObject {
+        self.scene_object_hierarchy.nodes.push(SceneObject {
+            name: String::from("Scene object"),
             id: SceneObjectId::new(),
             parent: None,
             mesh_id: MeshId::EMPTY,
@@ -86,15 +90,12 @@ impl Scene {
             scale: Vec3::ONE,
         });
 
-        self.scene_object_hierarchy
-            .scene_objects
-            .last_mut()
-            .unwrap()
+        self.scene_object_hierarchy.nodes.last_mut().unwrap()
     }
 
     pub fn get_mut(&mut self, scene_object_id: SceneObjectId) -> &mut SceneObject {
         self.scene_object_hierarchy
-            .scene_objects
+            .nodes
             .iter_mut()
             .find(|scene_object| scene_object.id == scene_object_id)
             .unwrap()
@@ -103,6 +104,7 @@ impl Scene {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SceneObject {
+    pub name: String,
     id: SceneObjectId,
     pub parent: Option<SceneObjectId>,
     pub position: Vec3,
@@ -132,8 +134,8 @@ impl SceneObject {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SceneObjectHierarchy {
-    pub scene_objects: Vec<SceneObject>,
+pub struct SceneHierarchy {
+    pub nodes: Vec<SceneObject>,
 }
 
 fn main() {
@@ -142,7 +144,10 @@ fn main() {
     let event_loop = EventLoop::new();
 
     let mut app = App::new(&event_loop);
-    app.passes = Some(Rc::new(RefCell::new(Passes::new(&mut app))));
+
+    let mut egui = Egui::new(&app.renderer);
+
+    let mut editor = Editor::new();
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -150,7 +155,7 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == app.renderer.window.id() => {
-                let response = { app.egui_state.on_event(&app.egui_context, event) };
+                let response = egui.handle_event(&event);
 
                 if !response.consumed {
                     match event {
@@ -164,7 +169,7 @@ fn main() {
                                 },
                             ..
                         } => {
-                            app.close();
+                            app::close(&mut app);
                             *control_flow = ControlFlow::Exit
                         }
                         WindowEvent::Resized(_physical_size) => {
@@ -183,11 +188,33 @@ fn main() {
                 puffin_egui::puffin::profile_function!();
                 puffin_egui::puffin::GlobalProfiler::lock().new_frame();
 
-                app.pre_update();
+                app::update(&mut app);
 
-                app.update();
+                ui::update(&mut app, &mut egui);
+                editor::asset_browser::update(&mut app, &mut egui, &mut editor);
+                editor::hierarchy::update(&mut app, &mut egui, &mut editor);
+                editor::inspector::update(&mut app, &mut egui, &mut editor);
 
-                app.post_update();
+                let output = app.renderer.surface.get_current_texture().unwrap();
+                let view = output
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+
+                let mut encoder =
+                    app.renderer
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
+
+                shadow_pass::render(&app, &mut encoder);
+                opaque_pass::render(&app, &mut encoder, &view);
+                ui::render(&mut app, &mut egui, &mut encoder, &view);
+
+                app.renderer.queue.submit(iter::once(encoder.finish()));
+                output.present();
+
+                ui::post_render(&mut egui);
             }
             Event::MainEventsCleared => {
                 app.renderer.window.request_redraw();

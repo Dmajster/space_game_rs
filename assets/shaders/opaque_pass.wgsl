@@ -33,6 +33,7 @@ struct Instance {
 struct Fragment {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) shadow_position: vec4<f32>,
+    @location(1) normal: vec3<f32>,
 };
 
 @vertex
@@ -55,6 +56,7 @@ fn vs_main(
         out.shadow_position.z,
         out.shadow_position.w
     );
+    out.normal = (camera.view_proj * model_matrix * vec4<f32>(vertex.normal, 1.0)).xyz;
     return out;
 }
 
@@ -64,6 +66,9 @@ fn vs_main(
 var depth_sampler: sampler_comparison;
 @group(1) @binding(2)
 var shadow_depth_texture: texture_depth_2d;
+
+const albedo = vec3<f32>(0.9, 0.9, 0.9);
+const ambient_factor = 0.2;
 
 @fragment
 fn fs_main(
@@ -85,5 +90,8 @@ fn fs_main(
     }
     visibility /= 9.0;
 
-    return vec4<f32>(visibility, visibility, visibility, 1.0);
+    let lambert_factor = max(dot(normalize(vec3<f32>(2.0, 1.0, 1.0)), in.normal), 0.0);
+    let lighting_factor = min(ambient_factor + visibility * lambert_factor, 1.0);
+
+    return vec4(lighting_factor * albedo, 1.0);
 }

@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use wgpu::{CommandEncoder, TextureView};
 
-use crate::{asset_server::AssetServer, App, Id};
+use crate::{asset_server::AssetServer, Id};
 
 #[derive(Debug)]
 pub struct Handle<T> {
@@ -83,14 +82,6 @@ impl<T> Pool<T> {
     }
 }
 
-pub trait RenderPass {
-    fn prepare(&mut self, app: &App);
-
-    fn render(&mut self, app: &App, encoder: &mut CommandEncoder, view: &TextureView);
-
-    fn cleanup(&mut self, app: &App);
-}
-
 use egui::epaint::ahash::HashMap;
 use glam::{Vec2, Vec3, Vec4};
 use std::{cell::RefCell, collections::BTreeMap, marker::PhantomData};
@@ -108,6 +99,7 @@ pub struct Vertex {
 pub type MeshId = Id;
 
 pub struct MeshDescriptor {
+    pub name: String,
     pub positions: Vec<Vec3>,
     pub normals: Vec<Vec3>,
     pub uvs: Vec<Vec2>,
@@ -116,6 +108,7 @@ pub struct MeshDescriptor {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Mesh {
+    pub name: String,
     id: MeshId,
     pub positions: Vec<Vec3>,
     pub normals: Vec<Vec3>,
@@ -125,8 +118,17 @@ pub struct Mesh {
 
 impl Mesh {
     pub fn new(descriptor: MeshDescriptor) -> Self {
+        let id = MeshId::new();
+
+        let name = if descriptor.name.len() > 0 {
+            descriptor.name
+        } else {
+            String::from(format!("mesh_{}", &id))
+        };
+
         Self {
-            id: MeshId::new(),
+            name,
+            id,
             positions: descriptor.positions,
             normals: descriptor.normals,
             uvs: descriptor.uvs,

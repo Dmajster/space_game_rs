@@ -1,1 +1,1 @@
-mod gltf;
+pub mod gltf;
