@@ -4,7 +4,6 @@ use native_dialog::FileDialog;
 use crate::editor::Editor;
 use crate::game::Game;
 use crate::app::ResMut;
-use crate::ui::Egui;
 
 pub fn update(game: ResMut<Game>, egui: ResMut<Egui>, editor: ResMut<Editor>) {
     // Window::new("Asset browser").show(&egui.context, |ui| {

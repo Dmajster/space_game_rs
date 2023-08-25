@@ -10,7 +10,6 @@ use glam::{Mat4, Quat, Vec3};
 use rendering::{MeshId, Renderer, RenderingRecorder};
 use serde::{Deserialize, Serialize};
 use std::{fmt, fs, path::Path};
-use ui::Egui;
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -155,29 +154,48 @@ fn main() {
         .unwrap();
 
     let mut renderer = Renderer::new(&window);
-    let egui = Egui::new(&window, &renderer);
     let editor = Editor::new();
     let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
     let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
     let game = Game::new(&event_loop, &mut renderer, &window);
 
     let mut app = App::default();
+
+    // EGUI
+    app.add_resource(egui::Context::default());
+    app.add_resource(egui_winit::State::new(&window));
+    app.add_resource(egui::FullOutput::default());
+    app.add_resource(egui_wgpu::Renderer::new(
+        &renderer.device,
+        renderer.surface_format,
+        None,
+        1,
+    ));
+    app.add_resource::<Vec<egui::ClippedPrimitive>>(vec![]);
+    app.add_resource(egui_wgpu::renderer::ScreenDescriptor {
+        size_in_pixels: [window.inner_size().width, window.inner_size().height],
+        pixels_per_point: 1.0,
+    });
+    //
+
     app.add_resource(game);
     app.add_resource(window);
     app.add_resource(renderer);
-    app.add_resource(egui);
     app.add_resource(editor);
     app.add_resource(asset_server);
     app.add_resource(scene);
+
     app.add_system(game::update);
     app.add_system(ui::update);
     app.add_system(editor::update);
-    app.add_system(editor::asset_browser::update);
+    // app.add_system(editor::asset_browser::update);
     app.add_resource::<Option<RenderingRecorder>>(None);
     app.add_system(rendering::record);
     app.add_system(game::shadow_pass::render);
     app.add_system(game::opaque_pass::render);
+    app.add_system(ui::render);
     app.add_system(rendering::present);
+    app.add_system(ui::post_render);
 
     event_loop.run(move |event, _, control_flow| {
         let window = app.get_resource::<winit::window::Window>().unwrap();
@@ -187,8 +205,10 @@ fn main() {
                 ref event,
                 window_id,
             } if window_id == window.get().id() => {
-                let egui = app.get_resource_mut::<Egui>().unwrap();
-                let response = egui.get_mut().handle_event(&event);
+                let context = app.get_resource::<egui::Context>().unwrap();
+                let state = app.get_resource_mut::<egui_winit::State>().unwrap();
+
+                let response = state.get_mut().on_event(&context.get(), event);
 
                 if !response.consumed {
                     match event {

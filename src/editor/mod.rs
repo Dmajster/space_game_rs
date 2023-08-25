@@ -1,11 +1,14 @@
 use egui::{CentralPanel, Frame};
 use egui_dock::{DockArea, Style, Tree};
 
-use crate::{app::ResMut, ui::Egui, SceneObjectId};
+use crate::{
+    app::{Res, ResMut},
+    SceneObjectId,
+};
 
-pub mod asset_browser;
-pub mod hierarchy;
-pub mod inspector;
+// pub mod asset_browser;
+// pub mod hierarchy;
+// pub mod inspector;
 
 pub struct Editor {
     selected_scene_object_id: SceneObjectId,
@@ -24,15 +27,15 @@ impl Editor {
     }
 }
 
-pub fn update(egui: ResMut<Egui>, editor: ResMut<Editor>) {
-    let egui = egui.get_mut();
+pub fn update(context: Res<egui::Context>, editor: ResMut<Editor>) {
+    let context = context.get();
 
     CentralPanel::default()
-        .frame(Frame::central_panel(&egui.context.style()).inner_margin(0.))
-        .show(&egui.context, |_| {
+        .frame(Frame::central_panel(&context.style()).inner_margin(0.))
+        .show(&context, |_| {
             DockArea::new(&mut editor.get_mut().tree)
-                .style(Style::from_egui(egui.context.style().as_ref()))
-                .show(&egui.context, &mut TabViewer {});
+                .style(Style::from_egui(context.style().as_ref()))
+                .show(&context, &mut TabViewer {});
         });
 }
 

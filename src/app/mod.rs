@@ -161,3 +161,8 @@ impl_system_for_system_wrappers!(A);
 impl_system_for_system_wrappers!(A B);
 impl_system_for_system_wrappers!(A B C);
 impl_system_for_system_wrappers!(A B C D);
+impl_system_for_system_wrappers!(A B C D E);
+impl_system_for_system_wrappers!(A B C D E F);
+impl_system_for_system_wrappers!(A B C D E F G);
+impl_system_for_system_wrappers!(A B C D E F G H);
+impl_system_for_system_wrappers!(A B C D E F G H I);

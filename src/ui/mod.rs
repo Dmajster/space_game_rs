@@ -1,103 +1,87 @@
-use crate::rendering::Renderer;
+use crate::app::Res;
 use crate::app::ResMut;
-use egui::ClippedPrimitive;
-use egui::FullOutput;
-use egui_wgpu::renderer::ScreenDescriptor;
-use egui_winit::EventResponse;
-use winit::event::WindowEvent;
+use crate::rendering::Renderer;
+use crate::rendering::RenderingRecorder;
 use winit::window::Window;
 
-pub struct Egui {
-    pub context: egui::Context,
-    state: egui_winit::State,
-    full_output: egui::FullOutput,
-    renderer: egui_wgpu::Renderer,
-    clipped_primitives: Vec<ClippedPrimitive>,
-    screen_descriptor: ScreenDescriptor,
-}
+pub fn update(window: Res<Window>, state: ResMut<egui_winit::State>, context: Res<egui::Context>) {
+    let mut state = state.get_mut();
+    let window = window.get();
+    let raw_input = state.take_egui_input(&window);
 
-impl Egui {
-    pub fn new(window: &Window, renderer: &Renderer) -> Self {
-        let egui_context = egui::Context::default();
-        let egui_state = egui_winit::State::new(&window);
-        let egui_full_output = FullOutput::default();
-
-        Self {
-            context: egui_context,
-            state: egui_state,
-            full_output: egui_full_output,
-            renderer: egui_wgpu::Renderer::new(&renderer.device, renderer.surface_format, None, 1),
-            clipped_primitives: vec![],
-            screen_descriptor: ScreenDescriptor {
-                size_in_pixels: [window.inner_size().width, window.inner_size().height],
-                pixels_per_point: 1.0,
-            },
-        }
-    }
-
-    pub fn handle_event(&mut self, event: &WindowEvent) -> EventResponse {
-        self.state.on_event(&self.context, event)
-    }
-}
-
-pub fn update(window: ResMut<Window>, egui: ResMut<Egui>) {
-    let raw_input = egui.get_mut().state.take_egui_input(&window.get_mut());
-
-    egui.get_mut().context.begin_frame(raw_input);
+    context.get().begin_frame(raw_input);
 }
 
 pub fn render(
-    window: &mut Window,
-    renderer: &mut Renderer,
-    egui: &mut Egui,
-    encoder: &mut wgpu::CommandEncoder,
-    view: &wgpu::TextureView,
+    window: ResMut<Window>,
+    renderer: ResMut<Renderer>,
+    context: Res<egui::Context>,
+    egui_renderer: ResMut<egui_wgpu::Renderer>,
+    full_output: ResMut<egui::FullOutput>,
+    state: ResMut<egui_winit::State>,
+    clipped_primitives: ResMut<Vec<egui::ClippedPrimitive>>,
+    rendering_recorder: ResMut<Option<RenderingRecorder>>,
+    screen_descriptor: Res<egui_wgpu::renderer::ScreenDescriptor>,
 ) {
-    egui.full_output = egui.context.end_frame();
+    let window = window.get_mut();
+    let renderer = renderer.get_mut();
+    let mut rendering_recorder = rendering_recorder.get_mut();
+    let rendering_recorder = rendering_recorder.as_mut().unwrap();
+    let screen_descriptor = screen_descriptor.get();
+    let mut egui_renderer = egui_renderer.get_mut();
+    let mut state = state.get_mut();
 
-    egui.clipped_primitives = egui.context.tessellate(egui.full_output.shapes.clone()); // creates triangles to paint
+    *full_output.get_mut() = context.get().end_frame();
 
-    for (id, image_delta) in &egui.full_output.textures_delta.set {
-        egui.renderer
-            .update_texture(&renderer.device, &renderer.queue, *id, image_delta);
+    *clipped_primitives.get_mut() = context
+        .get()
+        .tessellate(full_output.get_mut().shapes.clone()); // creates triangles to paint
+
+    for (id, image_delta) in &full_output.get_mut().textures_delta.set {
+        egui_renderer.update_texture(&renderer.device, &renderer.queue, *id, image_delta);
     }
 
-    egui.state.handle_platform_output(
+    state.handle_platform_output(
         &window,
-        &egui.context,
-        egui.full_output.platform_output.clone(),
+        &context.get(),
+        full_output.get_mut().platform_output.clone(),
     );
 
-    egui.renderer.update_buffers(
+    egui_renderer.update_buffers(
         &renderer.device,
         &renderer.queue,
-        encoder,
-        egui.clipped_primitives.as_slice(),
-        &egui.screen_descriptor,
+        &mut rendering_recorder.encoder,
+        clipped_primitives.get_mut().as_slice(),
+        &screen_descriptor,
     );
 
-    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("egui render pass"),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: &view,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Load,
-                store: true,
-            },
-        })],
-        depth_stencil_attachment: None,
-    });
+    let mut render_pass =
+        rendering_recorder
+            .encoder
+            .begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("egui render pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &rendering_recorder.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
 
-    egui.renderer.render(
+    egui_renderer.render(
         &mut render_pass,
-        egui.clipped_primitives.as_slice(),
-        &egui.screen_descriptor,
+        clipped_primitives.get_mut().as_slice(),
+        &screen_descriptor,
     );
 }
 
-pub fn post_render(egui: &mut Egui) {
-    for id in &egui.full_output.textures_delta.free {
-        egui.renderer.free_texture(id);
+pub fn post_render(full_output: Res<egui::FullOutput>, egui_renderer: ResMut<egui_wgpu::Renderer>) {
+    let mut egui_renderer = egui_renderer.get_mut();
+
+    for id in full_output.get().textures_delta.free.iter() {
+        egui_renderer.free_texture(&id);
     }
 }

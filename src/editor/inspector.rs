@@ -4,7 +4,6 @@ use crate::editor::Editor;
 use crate::game::Game;
 use crate::rendering::MeshId;
 use crate::app::ResMut;
-use crate::ui::Egui;
 use crate::SceneObjectId;
 
 pub fn update(game: ResMut<Game>, egui: ResMut<Egui>, editor: ResMut<Editor>) {
