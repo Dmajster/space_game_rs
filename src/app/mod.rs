@@ -9,7 +9,8 @@ use std::{
 #[derive(Default)]
 pub struct App {
     resources: HashMap<TypeId, Rc<dyn Any>>,
-    update_systems: Vec<Rc<dyn System>>,
+    systems: Vec<Rc<dyn System>>,
+    raw_systems: Vec<Rc<dyn Fn(&mut App)>>,
 }
 
 impl App {
@@ -49,21 +50,32 @@ impl App {
         })
     }
 
+    pub fn add_raw_system<S>(&mut self, system: S)
+    where
+        S: Fn(&mut App) + 'static,
+    {
+        self.raw_systems.push(Rc::new(system));
+    }
+
     pub fn add_system<S, I>(&mut self, system: S)
     where
         S: Fn<I, Output = ()> + 'static,
         I: std::marker::Tuple + 'static,
         SystemWrapper<S, I>: System,
     {
-        self.update_systems.push(Rc::new(SystemWrapper {
+        self.systems.push(Rc::new(SystemWrapper {
             system,
             _pd: PhantomData,
         }))
     }
 
-    pub fn execute(&self) {
-        for system in &self.update_systems {
+    pub fn execute(&mut self) {
+        for system in &self.systems {
             system.execute(&self)
+        }
+
+        for raw_system in self.raw_systems.clone() {
+            (raw_system)(self);
         }
     }
 }

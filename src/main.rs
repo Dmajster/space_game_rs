@@ -24,6 +24,7 @@ mod importing;
 mod rendering;
 mod scene;
 mod ui;
+mod components;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
@@ -130,7 +131,7 @@ fn main() {
 
     // OLD EDITOR
     app.add_system(editor::scene_hierarchy::update);
-    app.add_system(editor::inspector::update);
+    app.add_raw_system(editor::inspector::update);
     app.add_system(editor::asset_browser::update);
     //
 

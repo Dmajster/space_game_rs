@@ -2,7 +2,8 @@ use egui::{CollapsingHeader, Ui, Window};
 
 use crate::app::{Res, ResMut};
 use crate::editor::Editor;
-use crate::scene::{self, SceneObject, SceneObjectId};
+use crate::scene::scene_object::SceneObject;
+use crate::scene::{self, SceneObjectId};
 use crate::Scene;
 
 #[derive(Default)]
@@ -38,17 +39,12 @@ pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<
         });
 
     for parent_id in changes.add_scene_objects {
-        println!("before new: {:#?}", scene);
-
         let new_scene_object_id = scene.add_scene_object().id();
         scene.reparent(new_scene_object_id, parent_id);
-        println!("after new: {:#?}", scene);
     }
 
     for removed_id in changes.remove_scene_objects {
-        println!("before remove: {:#?}", scene);
         scene.remove_scene_object(removed_id);
-        println!("after remove: {:#?}", scene);
     }
 
     if changes.selected_scene_object_id != SceneObjectId::EMPTY {

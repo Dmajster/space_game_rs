@@ -1,11 +1,15 @@
-use crate::{Id, asset_server::AssetId};
+use crate::Id;
 use glam::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
+use self::scene_object::SceneObject;
+
 pub type SceneObjectId = Id;
 
 pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
+
+pub mod scene_object;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Scene {
@@ -38,16 +42,7 @@ impl Scene {
     }
 
     pub fn add_scene_object(&mut self) -> &mut SceneObject {
-        self.scene_objects.push(SceneObject {
-            name: String::from("Scene object"),
-            id: SceneObjectId::new(),
-            parent_id: SceneObjectId::EMPTY,
-            children: vec![],
-            mesh_id: AssetId::EMPTY,
-            position: Vec3::ZERO,
-            rotation: Vec3::ZERO,
-            scale: Vec3::ONE,
-        });
+        self.scene_objects.push(SceneObject::default());
 
         self.scene_objects.last_mut().unwrap()
     }
@@ -80,13 +75,13 @@ impl Scene {
     pub fn get(&self, scene_object_id: SceneObjectId) -> Option<&SceneObject> {
         self.scene_objects
             .iter()
-            .find(|scene_object| scene_object.id == scene_object_id)
+            .find(|scene_object| scene_object.id() == scene_object_id)
     }
 
     pub fn get_mut(&mut self, scene_object_id: SceneObjectId) -> Option<&mut SceneObject> {
         self.scene_objects
             .iter_mut()
-            .find(|scene_object| scene_object.id == scene_object_id)
+            .find(|scene_object| scene_object.id() == scene_object_id)
     }
 
     pub fn remove_scene_object(&mut self, scene_object_id: SceneObjectId) {
@@ -108,45 +103,9 @@ impl Scene {
         let index = self
             .scene_objects
             .iter()
-            .position(|so| so.id == scene_object_id)
+            .position(|so| so.id() == scene_object_id)
             .unwrap();
 
         self.scene_objects.swap_remove(index);
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SceneObject {
-    pub name: String,
-    id: SceneObjectId,
-    pub parent_id: SceneObjectId,
-    pub children: Vec<SceneObjectId>,
-    pub position: Vec3,
-    pub rotation: Vec3,
-    pub scale: Vec3,
-    pub mesh_id: AssetId,
-}
-
-impl SceneObject {
-    pub fn calculate_transform(&self) -> Mat4 {
-        let cr = (self.rotation.x.to_radians() * 0.5).cos();
-        let sr = (self.rotation.x.to_radians() * 0.5).sin();
-        let cp = (self.rotation.y.to_radians() * 0.5).cos();
-        let sp = (self.rotation.y.to_radians() * 0.5).sin();
-        let cy = (self.rotation.z.to_radians() * 0.5).cos();
-        let sy = (self.rotation.z.to_radians() * 0.5).sin();
-
-        let rotation = Quat::from_xyzw(
-            cr * cp * cy + sr * sp * sy,
-            sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy,
-            cr * cp * sy - sr * sp * cy,
-        );
-
-        Mat4::from_scale_rotation_translation(self.scale, rotation, self.position)
-    }
-
-    pub fn id(&self) -> SceneObjectId {
-        self.id
     }
 }

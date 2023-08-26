@@ -101,8 +101,6 @@ pub struct Vertex {
     pub uv: Vec2,
 }
 
-
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Mesh {
     pub positions: Vec<Vec3>,

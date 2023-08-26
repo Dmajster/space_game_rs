@@ -1,20 +1,22 @@
-use egui::{ComboBox, DragValue, Window};
+use egui::{DragValue, Ui, Window};
 
-use crate::app::{Res, ResMut};
-use crate::asset_server::{AssetId, AssetServer};
+use crate::app::App;
 use crate::editor::Editor;
 use crate::scene::SceneObjectId;
 use crate::Scene;
 
-pub fn update(
-    editor: Res<Editor>,
-    context: Res<egui::Context>,
-    asset_server: Res<AssetServer>,
-    scene: ResMut<Scene>,
-) {
+pub trait EditorInspector {
+    fn draw(&mut self, ui: &mut Ui, app: &mut App);
+}
+
+pub fn update(app: &mut App) {
+    let context = app.get_resource::<egui::Context>().unwrap();
     let context = context.get();
+
+    let editor = app.get_resource::<Editor>().unwrap();
     let editor = editor.get();
-    let asset_server = asset_server.get();
+
+    let scene = app.get_resource_mut::<Scene>().unwrap();
     let mut scene = scene.get_mut();
 
     Window::new("Inspector")
@@ -57,27 +59,18 @@ pub fn update(
 
             ui.separator();
 
-            ui.heading("Mesh");
-            ui.add_space(8.0);
+            for component in &mut sobj.components {
+                ui.heading(component.typetag_name());
+                ui.add_space(8.0);
 
-            ui.columns(2, |columns| {
-                columns[0].label("Mesh ID:");
+                component.draw(ui, app);
 
-                ComboBox::from_label("")
-                    .selected_text(format!("{}", &mut sobj.mesh_id))
-                    .show_ui(&mut columns[1], |ui| {
-                        ui.selectable_value(&mut sobj.mesh_id, AssetId::EMPTY, "empty");
+                ui.separator();
+            }
 
-                        for mesh in asset_server.meshes.iter() {
-                            ui.selectable_value(
-                                &mut sobj.mesh_id,
-                                mesh.id(),
-                                mesh.metadata.name.as_ref().unwrap(),
-                            );
-                        }
-                    });
-            });
+            // ui.heading("Mesh");
+            // ui.add_space(8.0);
 
-            ui.separator();
+            // ui.separator();
         });
 }
