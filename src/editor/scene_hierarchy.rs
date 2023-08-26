@@ -2,11 +2,11 @@ use egui::{CollapsingHeader, Ui, Window};
 
 use crate::app::{Res, ResMut};
 use crate::editor::Editor;
-use crate::scene::{SceneObject, SceneObjectId};
+use crate::scene::{self, SceneObject, SceneObjectId};
 use crate::Scene;
 
 #[derive(Default)]
-struct HierarchyChanges {
+struct SceneHierarchyChanges {
     add_scene_objects: Vec<SceneObjectId>, // List of id's to whom children are added
     remove_scene_objects: Vec<SceneObjectId>, // List of id's of removed scene objects
     selected_scene_object_id: SceneObjectId,
@@ -15,14 +15,19 @@ struct HierarchyChanges {
 pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<Editor>) {
     let context = context.get();
     let mut editor = editor.get_mut();
-    let mut changes = HierarchyChanges::default();
+    let mut changes = SceneHierarchyChanges::default();
+    let mut scene = scene.get_mut();
 
-    Window::new("Hierarchy")
-        .default_width(512.0)
+    Window::new("Scene hierarchy")
+        .min_width(512.0)
         .show(&context, |ui| {
-            for scene_object in &scene.get().scene_objects {
+            if ui.button("save scene").clicked() {
+                scene.write_to_file(&scene::DEFAULT_SCENE_PATH)
+            }
+
+            for scene_object in &scene.scene_objects {
                 if scene_object.parent_id == SceneObjectId::EMPTY {
-                    ui_tree_recursive(ui, 0, &scene.get(), scene_object, &mut changes);
+                    ui_tree_recursive(ui, 0, &scene, scene_object, &mut changes);
                 }
             }
         })
@@ -32,7 +37,6 @@ pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<
             ui_tree_context_menu(ui, SceneObjectId::EMPTY, &mut changes);
         });
 
-    let mut scene = scene.get_mut();
     for parent_id in changes.add_scene_objects {
         println!("before new: {:#?}", scene);
 
@@ -57,7 +61,7 @@ fn ui_tree_recursive(
     depth: usize,
     scene: &Scene,
     scene_object: &SceneObject,
-    changes: &mut HierarchyChanges,
+    changes: &mut SceneHierarchyChanges,
 ) {
     let header_response = CollapsingHeader::new(scene_object.name.as_str())
         .default_open(false)
@@ -83,7 +87,7 @@ fn ui_tree_recursive(
 fn ui_tree_context_menu(
     ui: &mut Ui,
     selected_scene_object_id: SceneObjectId,
-    changes: &mut HierarchyChanges,
+    changes: &mut SceneHierarchyChanges,
 ) {
     if ui.button("add scene object").clicked() {
         changes.add_scene_objects.push(selected_scene_object_id);

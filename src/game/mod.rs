@@ -7,9 +7,8 @@ pub mod shadow_pass;
 
 use crate::{
     app::{Res, ResMut},
-    asset_server::{self, AssetServer},
+    asset_server::AssetServer,
     rendering::Renderer,
-    Scene,
 };
 
 use self::{opaque_pass::OpaqueRenderPass, shadow_pass::ShadowRenderPass};
@@ -163,16 +162,10 @@ impl Game {
     }
 }
 
-pub fn update(
-    game: ResMut<Game>,
-    renderer: ResMut<Renderer>,
-    asset_server: Res<AssetServer>,
-    scene: Res<Scene>,
-) {
+pub fn update(game: ResMut<Game>, renderer: ResMut<Renderer>, asset_server: Res<AssetServer>) {
     let asset_server = asset_server.get();
     let mut app = game.get_mut();
     let mut renderer = renderer.get_mut();
-    let scene = scene.get();
 
     renderer.create_render_meshes(&asset_server);
 
@@ -191,12 +184,4 @@ pub fn update(
     renderer
         .queue
         .write_buffer(&app.sun_buffer, 0, bytemuck::cast_slice(&[app.sun_uniform]));
-}
-
-pub fn close(asset_server: Res<AssetServer>, scene: Res<Scene>) {
-    asset_server
-        .get()
-        .write_to_file(&asset_server::DEFAULT_PATH);
-
-    scene.get().write_to_file(&crate::DEFAULT_SCENE_PATH);
 }

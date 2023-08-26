@@ -28,8 +28,6 @@ mod ui;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
 
-pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
-
 impl Id {
     pub fn new() -> Self {
         Id(fastrand::u64(..))
@@ -82,7 +80,7 @@ fn main() {
     let mut renderer = Renderer::new(&window);
     let editor = Editor::new();
     let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
-    let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
+    let scene = Scene::read_from_file_or_new(&scene::DEFAULT_SCENE_PATH);
     let game = Game::new(&mut renderer, &window);
 
     let mut app = App::default();
@@ -131,9 +129,9 @@ fn main() {
     //
 
     // OLD EDITOR
-    app.add_system(editor::asset_browser::update);
-    app.add_system(editor::hierarchy::update);
+    app.add_system(editor::scene_hierarchy::update);
     app.add_system(editor::inspector::update);
+    app.add_system(editor::asset_browser::update);
     //
 
     app.add_resource(game);

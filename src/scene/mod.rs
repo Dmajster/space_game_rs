@@ -5,6 +5,8 @@ use std::{fs, path::Path};
 
 pub type SceneObjectId = Id;
 
+pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Scene {
     pub scene_objects: Vec<SceneObject>,

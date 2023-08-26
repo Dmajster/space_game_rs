@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub mod asset_browser;
-pub mod hierarchy;
+pub mod scene_hierarchy;
 pub mod inspector;
 
 pub struct Editor {

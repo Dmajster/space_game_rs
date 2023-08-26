@@ -399,7 +399,7 @@ pub fn update_scene_object_transforms(scene: Res<Scene>, renderer: Res<Renderer>
                         .find(|so| so.id() == scene_object.parent_id)
                         .unwrap();
 
-                    transform *= parent.calculate_transform();
+                    transform = parent.calculate_transform() * transform;
 
                     scene_object = parent;
                 } else {

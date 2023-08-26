@@ -2,7 +2,7 @@ use egui::*;
 use native_dialog::FileDialog;
 
 use crate::app::{Res, ResMut};
-use crate::asset_server::AssetServer;
+use crate::asset_server::{self, AssetServer};
 use crate::editor::Editor;
 use crate::importing;
 
@@ -12,7 +12,7 @@ pub fn update(editor: Res<Editor>, context: Res<egui::Context>, asset_server: Re
     let mut asset_server = asset_server.get_mut();
 
     Window::new("Asset browser")
-        .default_width(512.0)
+        .min_width(512.0)
         .show(&context, |ui| {
             let column_count = 5;
 
@@ -27,6 +27,10 @@ pub fn update(editor: Res<Editor>, context: Res<egui::Context>, asset_server: Re
                     importing::gltf::load(&path, &mut asset_server);
                 }
             };
+
+            if ui.button("save assets").clicked() {
+                asset_server.write_to_file(&asset_server::DEFAULT_PATH);
+            }
 
             ui.separator();
 
