@@ -5,7 +5,6 @@
 use app::App;
 use asset_server::AssetServer;
 use editor::Editor;
-use egui_dock::{NodeIndex, Tree};
 use game::Game;
 use rendering::{Renderer, RenderingRecorder};
 use scene::Scene;
@@ -26,7 +25,7 @@ mod rendering;
 mod scene;
 mod ui;
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
 
 pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
@@ -41,6 +40,12 @@ impl Id {
     }
 
     pub const EMPTY: Id = Id(u64::MAX);
+}
+
+impl Default for Id {
+    fn default() -> Self {
+        Self::EMPTY
+    }
 }
 
 impl fmt::Display for Id {

@@ -9,11 +9,12 @@ use crate::Scene;
 struct HierarchyChanges {
     add_scene_objects: Vec<SceneObjectId>, // List of id's to whom children are added
     remove_scene_objects: Vec<SceneObjectId>, // List of id's of removed scene objects
+    selected_scene_object_id: SceneObjectId,
 }
 
 pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<Editor>) {
     let context = context.get();
-    let editor = editor.get_mut();
+    let mut editor = editor.get_mut();
     let mut changes = HierarchyChanges::default();
 
     Window::new("Hierarchy")
@@ -34,7 +35,7 @@ pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<
     let mut scene = scene.get_mut();
     for parent_id in changes.add_scene_objects {
         println!("before new: {:#?}", scene);
-        
+
         let new_scene_object_id = scene.add_scene_object().id();
         scene.reparent(new_scene_object_id, parent_id);
         println!("after new: {:#?}", scene);
@@ -45,6 +46,10 @@ pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<
         scene.remove_scene_object(removed_id);
         println!("after remove: {:#?}", scene);
     }
+
+    if changes.selected_scene_object_id != SceneObjectId::EMPTY {
+        editor.selected_scene_object_id = changes.selected_scene_object_id;
+    }
 }
 
 fn ui_tree_recursive(
@@ -54,7 +59,7 @@ fn ui_tree_recursive(
     scene_object: &SceneObject,
     changes: &mut HierarchyChanges,
 ) {
-    CollapsingHeader::new(scene_object.name.as_str())
+    let header_response = CollapsingHeader::new(scene_object.name.as_str())
         .default_open(false)
         .id_source(scene_object.id().0)
         .show(ui, |ui| {
@@ -64,10 +69,15 @@ fn ui_tree_recursive(
                 ui_tree_recursive(ui, depth + 1, scene, child, changes);
             }
         })
-        .header_response
-        .context_menu(|ui| {
-            ui_tree_context_menu(ui, scene_object.id(), changes);
-        });
+        .header_response;
+
+    if header_response.clicked() {
+        changes.selected_scene_object_id = scene_object.id();
+    }
+
+    header_response.context_menu(|ui| {
+        ui_tree_context_menu(ui, scene_object.id(), changes);
+    });
 }
 
 fn ui_tree_context_menu(
