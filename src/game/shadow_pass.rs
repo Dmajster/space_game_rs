@@ -166,7 +166,7 @@ pub fn render(
     render_pass.set_bind_group(0, &game.shadow_pass.bind_group, &[]);
     render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
 
-    for (index, scene_object) in scene.scene_object_hierarchy.nodes.iter().enumerate() {
+    for (index, scene_object) in scene.scene_objects.iter().enumerate() {
         if let Some(render_mesh) = renderer.get_render_mesh(&scene_object.mesh_id) {
             let vertex_buffer = renderer
                 .mesh_buffers

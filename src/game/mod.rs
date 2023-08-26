@@ -191,40 +191,6 @@ pub fn update(
     renderer
         .queue
         .write_buffer(&app.sun_buffer, 0, bytemuck::cast_slice(&[app.sun_uniform]));
-
-    let instances = scene
-        .scene_object_hierarchy
-        .nodes
-        .iter()
-        .map(|mut scene_object| {
-            let mut transform = scene_object.calculate_transform();
-
-            loop {
-                if let Some(parent_id) = scene_object.parent {
-                    let parent = scene
-                        .scene_object_hierarchy
-                        .nodes
-                        .iter()
-                        .find(|scene_object| scene_object.id == parent_id)
-                        .unwrap();
-
-                    transform *= parent.calculate_transform();
-
-                    scene_object = parent;
-                } else {
-                    break;
-                }
-            }
-
-            transform
-        })
-        .collect::<Vec<_>>();
-
-    renderer.queue.write_buffer(
-        &renderer.scene_object_instances,
-        0,
-        bytemuck::cast_slice(instances.as_slice()),
-    );
 }
 
 pub fn close(asset_server: Res<AssetServer>, scene: Res<Scene>) {

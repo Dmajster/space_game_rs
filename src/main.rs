@@ -7,10 +7,10 @@ use asset_server::AssetServer;
 use editor::Editor;
 use egui_dock::{NodeIndex, Tree};
 use game::Game;
-use glam::{Mat4, Quat, Vec3};
-use rendering::{MeshId, Renderer, RenderingRecorder};
+use rendering::{Renderer, RenderingRecorder};
+use scene::Scene;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs, path::Path};
+use std::fmt::{self, Debug};
 
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -23,9 +23,10 @@ mod editor;
 mod game;
 mod importing;
 mod rendering;
+mod scene;
 mod ui;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
 
 pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
@@ -52,95 +53,14 @@ impl fmt::Display for Id {
     }
 }
 
-pub type SceneObjectId = Id;
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Scene {
-    pub scene_object_hierarchy: SceneHierarchy,
-}
-
-impl Scene {
-    pub fn read_from_file_or_new<P>(path: &P) -> Self
-    where
-        P: AsRef<Path>,
-    {
-        if let Ok(bytes) = fs::read(path) {
-            let decompressed_bytes = lz4_flex::decompress_size_prepended(&bytes).unwrap();
-
-            bincode::deserialize::<Self>(&decompressed_bytes).unwrap()
+impl Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if *self == Id::EMPTY {
+            f.write_str("empty")
         } else {
-            Default::default()
+            f.debug_tuple("Id").field(&self.0).finish()
         }
     }
-
-    pub fn write_to_file<P>(&self, path: &P)
-    where
-        P: AsRef<Path>,
-    {
-        let bytes = bincode::serialize::<Self>(&self).unwrap();
-
-        let compressed_bytes = lz4_flex::compress_prepend_size(&bytes);
-
-        fs::write(path, compressed_bytes).unwrap();
-    }
-
-    pub fn add(&mut self) -> &mut SceneObject {
-        self.scene_object_hierarchy.nodes.push(SceneObject {
-            name: String::from("Scene object"),
-            id: SceneObjectId::new(),
-            parent: None,
-            mesh_id: MeshId::EMPTY,
-            position: Vec3::ZERO,
-            rotation: Vec3::ZERO,
-            scale: Vec3::ONE,
-        });
-
-        self.scene_object_hierarchy.nodes.last_mut().unwrap()
-    }
-
-    pub fn get_mut(&mut self, scene_object_id: SceneObjectId) -> &mut SceneObject {
-        self.scene_object_hierarchy
-            .nodes
-            .iter_mut()
-            .find(|scene_object| scene_object.id == scene_object_id)
-            .unwrap()
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SceneObject {
-    pub name: String,
-    id: SceneObjectId,
-    pub parent: Option<SceneObjectId>,
-    pub position: Vec3,
-    pub rotation: Vec3,
-    pub scale: Vec3,
-    pub mesh_id: MeshId,
-}
-
-impl SceneObject {
-    pub fn calculate_transform(&self) -> Mat4 {
-        let cr = (self.rotation.x.to_radians() * 0.5).cos();
-        let sr = (self.rotation.x.to_radians() * 0.5).sin();
-        let cp = (self.rotation.y.to_radians() * 0.5).cos();
-        let sp = (self.rotation.y.to_radians() * 0.5).sin();
-        let cy = (self.rotation.z.to_radians() * 0.5).cos();
-        let sy = (self.rotation.z.to_radians() * 0.5).sin();
-
-        let rotation = Quat::from_xyzw(
-            cr * cp * cy + sr * sp * sy,
-            sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy,
-            cr * cp * sy - sr * sp * cy,
-        );
-
-        Mat4::from_scale_rotation_translation(self.scale, rotation, self.position)
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SceneHierarchy {
-    pub nodes: Vec<SceneObject>,
 }
 
 fn main() {
@@ -177,42 +97,47 @@ fn main() {
         size_in_pixels: [window.inner_size().width, window.inner_size().height],
         pixels_per_point: 1.0,
     });
-    //
-
-    // EDITOR
-    let tree = {
-        let mut tree = Tree::new(vec!["hierarchy".to_string()]);
-        let [hierarchy, inspector] =
-            tree.split_right(NodeIndex::root(), 0.8, vec!["inspector".to_string()]);
-
-        let [hierarchy, file_browser] = tree.split_below(
-            hierarchy,
-            0.6,
-            vec!["file browser".to_string(), "profiler".to_string()],
-        );
-
-        let [hierarchy, scene] = tree.split_right(hierarchy, 0.25, vec!["scene".to_string()]);
-        tree.split_right(scene, 0.5, vec!["game".to_string()]);
-        tree
-    };
-    app.add_resource::<Tree<String>>(tree);
-    //
-
-    app.add_resource(game);
-    app.add_resource(window);
-    app.add_resource(renderer);
-    app.add_resource(editor);
-    app.add_resource(asset_server);
-    app.add_resource(scene);
-
-    app.add_system(game::update);
     app.add_system(ui::update);
+    //
+
+    // DOCKING EDITOR
+    // let tree = {
+    //     let mut tree = Tree::new(vec!["hierarchy".to_string()]);
+    //     let [hierarchy, inspector] =
+    //         tree.split_right(NodeIndex::root(), 0.8, vec!["inspector".to_string()]);
+
+    //     let [hierarchy, file_browser] = tree.split_below(
+    //         hierarchy,
+    //         0.6,
+    //         vec!["file browser".to_string(), "profiler".to_string()],
+    //     );
+
+    //     let [hierarchy, scene] = tree.split_right(hierarchy, 0.25, vec!["scene".to_string()]);
+    //     tree.split_right(scene, 0.5, vec!["game".to_string()]);
+    //     tree
+    // };
+    // app.add_resource::<Tree<String>>(tree);
     // app.add_system(editor::update);
+    //
 
+    // RENDERER
+    app.add_resource(renderer);
+    app.add_system(rendering::update_scene_object_transforms);
+    //
 
+    // OLD EDITOR
     app.add_system(editor::asset_browser::update);
     app.add_system(editor::hierarchy::update);
     app.add_system(editor::inspector::update);
+    //
+
+    app.add_resource(game);
+    app.add_system(game::update);
+
+    app.add_resource(window);
+    app.add_resource(editor);
+    app.add_resource(asset_server);
+    app.add_resource(scene);
 
     app.add_resource::<Option<RenderingRecorder>>(None);
     app.add_system(rendering::record);
@@ -271,12 +196,6 @@ fn main() {
                 puffin_egui::puffin::GlobalProfiler::lock().new_frame();
 
                 app.execute();
-
-                // shadow_pass::render(&app, &mut encoder);
-                // opaque_pass::render(&app, &mut encoder, &view);
-                // ui::render(&mut app, &mut egui, &mut encoder, &view);
-
-                // ui::post_render(&mut egui);
             }
             _ => {}
         }

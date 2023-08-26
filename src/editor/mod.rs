@@ -1,11 +1,11 @@
-use egui::{CentralPanel, ComboBox, DragValue, Frame};
-use egui_dock::{DockArea, NodeIndex, Style, Tree};
+use egui::{CentralPanel, Frame};
+use egui_dock::{DockArea, Style, Tree};
 
 use crate::{
     app::{Res, ResMut},
     asset_server::AssetServer,
-    rendering::MeshId,
-    Scene, SceneObjectId,
+    scene::SceneObjectId,
+    Scene,
 };
 
 pub mod asset_browser;
@@ -26,7 +26,7 @@ impl Editor {
     }
 }
 
-pub fn update(
+pub fn _update(
     context: Res<egui::Context>,
     editor: ResMut<Editor>,
     scene: ResMut<Scene>,
@@ -43,26 +43,24 @@ pub fn update(
                 .show(
                     &context,
                     &mut TabViewer {
-                        editor: editor.clone(),
-                        scene: scene.clone(),
-                        asset_server: asset_server.clone(),
+                        _editor: editor.clone(),
+                        _scene: scene.clone(),
+                        _asset_server: asset_server.clone(),
                     },
                 );
         });
 }
 
 struct TabViewer {
-    editor: ResMut<Editor>,
-    scene: ResMut<Scene>,
-    asset_server: ResMut<AssetServer>,
+    _editor: ResMut<Editor>,
+    _scene: ResMut<Scene>,
+    _asset_server: ResMut<AssetServer>,
 }
 
 impl egui_dock::TabViewer for TabViewer {
     type Tab = String;
 
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        
-    }
+    fn ui(&mut self, _ui: &mut egui::Ui, _tab: &mut Self::Tab) {}
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         (&*tab).into()

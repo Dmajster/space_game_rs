@@ -121,6 +121,12 @@ impl<T> Clone for ResMut<T> {
 }
 
 impl<T> ResMut<T> {
+    pub fn get(&self) -> Ref<'_, T> {
+        self.rc
+            .try_borrow()
+            .expect(&format!("borrow error resource: '{}'", type_name::<T>()))
+    }
+
     pub fn get_mut(&self) -> RefMut<'_, T> {
         self.rc
             .try_borrow_mut()

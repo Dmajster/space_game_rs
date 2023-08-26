@@ -4,7 +4,8 @@ use crate::app::{Res, ResMut};
 use crate::asset_server::AssetServer;
 use crate::editor::Editor;
 use crate::rendering::MeshId;
-use crate::{Scene, SceneObjectId};
+use crate::Scene;
+use crate::scene::SceneObjectId;
 
 pub fn update(
     editor: Res<Editor>,
@@ -22,7 +23,7 @@ pub fn update(
             return;
         }
 
-        let sobj = scene.get_mut(editor.selected_scene_object_id);
+        let sobj = scene.get_mut(editor.selected_scene_object_id).unwrap();
 
         ui.columns(2, |columns| {
             columns[0].label("Name");

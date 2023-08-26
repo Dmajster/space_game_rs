@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app::{Res, ResMut},
     asset_server::AssetServer,
+    scene::{Scene, SceneObjectId},
     Id,
 };
 
@@ -376,6 +377,45 @@ impl<'renderer> Renderer<'renderer> {
             );
         }
     }
+}
+
+//TODO: Rework this function to go top to bottom. Currently it goes up recursively potentialy
+// going over the same parent multiple times doing unnecessary recalculations.
+pub fn update_scene_object_transforms(scene: Res<Scene>, renderer: Res<Renderer>) {
+    let scene = scene.get();
+    let renderer = renderer.get();
+
+    let instances = scene
+        .scene_objects
+        .iter()
+        .map(|mut scene_object| {
+            let mut transform = scene_object.calculate_transform();
+
+            loop {
+                if scene_object.parent_id != SceneObjectId::EMPTY {
+                    let parent = scene
+                        .scene_objects
+                        .iter()
+                        .find(|so| so.id() == scene_object.parent_id)
+                        .unwrap();
+
+                    transform *= parent.calculate_transform();
+
+                    scene_object = parent;
+                } else {
+                    break;
+                }
+            }
+
+            transform
+        })
+        .collect::<Vec<_>>();
+
+    renderer.queue.write_buffer(
+        &renderer.scene_object_instances,
+        0,
+        bytemuck::cast_slice(instances.as_slice()),
+    );
 }
 
 pub struct RenderingRecorder {
