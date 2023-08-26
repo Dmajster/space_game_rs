@@ -1,6 +1,6 @@
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
-use winit::{event_loop::EventLoop, window::Window};
+use winit::window::Window;
 
 pub mod opaque_pass;
 pub mod shadow_pass;
@@ -82,7 +82,7 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(event_loop: &EventLoop<()>, renderer: &mut Renderer, window: &Window) -> Self {
+    pub fn new(renderer: &mut Renderer, window: &Window) -> Self {
         let sun = Sun {
             inverse_direction: Vec3::new(4.0, 5.0, 1.0),
             projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 20.0, 0.1),

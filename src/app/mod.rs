@@ -78,6 +78,14 @@ pub struct Res<T> {
     rc: Rc<RefCell<T>>,
 }
 
+impl<T> Clone for Res<T> {
+    fn clone(&self) -> Self {
+        Self {
+            rc: self.rc.clone(),
+        }
+    }
+}
+
 impl<T> Res<T> {
     pub fn get(&self) -> Ref<'_, T> {
         self.rc
@@ -102,6 +110,14 @@ where
 
 pub struct ResMut<T> {
     rc: Rc<RefCell<T>>,
+}
+
+impl<T> Clone for ResMut<T> {
+    fn clone(&self) -> Self {
+        Self {
+            rc: self.rc.clone(),
+        }
+    }
 }
 
 impl<T> ResMut<T> {

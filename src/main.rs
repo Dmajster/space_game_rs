@@ -5,6 +5,7 @@
 use app::App;
 use asset_server::AssetServer;
 use editor::Editor;
+use egui_dock::{NodeIndex, Tree};
 use game::Game;
 use glam::{Mat4, Quat, Vec3};
 use rendering::{MeshId, Renderer, RenderingRecorder};
@@ -157,7 +158,7 @@ fn main() {
     let editor = Editor::new();
     let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
     let scene = Scene::read_from_file_or_new(&crate::DEFAULT_SCENE_PATH);
-    let game = Game::new(&event_loop, &mut renderer, &window);
+    let game = Game::new(&mut renderer, &window);
 
     let mut app = App::default();
 
@@ -178,6 +179,25 @@ fn main() {
     });
     //
 
+    // EDITOR
+    let tree = {
+        let mut tree = Tree::new(vec!["hierarchy".to_string()]);
+        let [hierarchy, inspector] =
+            tree.split_right(NodeIndex::root(), 0.8, vec!["inspector".to_string()]);
+
+        let [hierarchy, file_browser] = tree.split_below(
+            hierarchy,
+            0.6,
+            vec!["file browser".to_string(), "profiler".to_string()],
+        );
+
+        let [hierarchy, scene] = tree.split_right(hierarchy, 0.25, vec!["scene".to_string()]);
+        tree.split_right(scene, 0.5, vec!["game".to_string()]);
+        tree
+    };
+    app.add_resource::<Tree<String>>(tree);
+    //
+
     app.add_resource(game);
     app.add_resource(window);
     app.add_resource(renderer);
@@ -187,8 +207,13 @@ fn main() {
 
     app.add_system(game::update);
     app.add_system(ui::update);
-    app.add_system(editor::update);
-    // app.add_system(editor::asset_browser::update);
+    // app.add_system(editor::update);
+
+
+    app.add_system(editor::asset_browser::update);
+    app.add_system(editor::hierarchy::update);
+    app.add_system(editor::inspector::update);
+
     app.add_resource::<Option<RenderingRecorder>>(None);
     app.add_system(rendering::record);
     app.add_system(game::shadow_pass::render);
@@ -207,7 +232,6 @@ fn main() {
             } if window_id == window.get().id() => {
                 let context = app.get_resource::<egui::Context>().unwrap();
                 let state = app.get_resource_mut::<egui_winit::State>().unwrap();
-
                 let response = state.get_mut().on_event(&context.get(), event);
 
                 if !response.consumed {
