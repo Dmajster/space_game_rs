@@ -1,4 +1,4 @@
-use crate::{rendering::MeshId, Id};
+use crate::{Id, asset_server::AssetId};
 use glam::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -43,7 +43,7 @@ impl Scene {
             id: SceneObjectId::new(),
             parent_id: SceneObjectId::EMPTY,
             children: vec![],
-            mesh_id: MeshId::EMPTY,
+            mesh_id: AssetId::EMPTY,
             position: Vec3::ZERO,
             rotation: Vec3::ZERO,
             scale: Vec3::ONE,
@@ -124,7 +124,7 @@ pub struct SceneObject {
     pub position: Vec3,
     pub rotation: Vec3,
     pub scale: Vec3,
-    pub mesh_id: MeshId,
+    pub mesh_id: AssetId,
 }
 
 impl SceneObject {

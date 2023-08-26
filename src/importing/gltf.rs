@@ -2,7 +2,10 @@ use glam::{Vec2, Vec3};
 use gltf::{accessor::DataType, Gltf, Semantic};
 use std::{fs, mem, path::Path};
 
-use crate::{asset_server::AssetServer, rendering::MeshDescriptor};
+use crate::{
+    asset_server::{AssetMetadata, AssetServer},
+    rendering::Mesh,
+};
 
 pub fn load<P>(path: &P, asset_server: &mut AssetServer)
 where
@@ -12,7 +15,11 @@ where
 
     for mesh in gltf.meshes() {
         for primitive in mesh.primitives() {
-            let name = mesh.name().unwrap_or("").to_owned();
+            let name = if let Some(name) = mesh.name() {
+                Some(name.to_owned())
+            } else {
+                None
+            };
 
             let positions = primitive
                 .attributes()
@@ -60,13 +67,15 @@ where
                 _ => todo!(),
             };
 
-            asset_server.add_mesh_from_desc(MeshDescriptor {
-                name,
-                positions,
-                normals,
-                uvs,
-                indices,
-            });
+            asset_server.meshes.add(
+                Mesh {
+                    positions,
+                    normals,
+                    uvs,
+                    indices,
+                },
+                AssetMetadata { name },
+            );
         }
     }
 }

@@ -1,9 +1,8 @@
 use egui::{ComboBox, DragValue, Window};
 
 use crate::app::{Res, ResMut};
-use crate::asset_server::AssetServer;
+use crate::asset_server::{AssetId, AssetServer};
 use crate::editor::Editor;
-use crate::rendering::MeshId;
 use crate::scene::SceneObjectId;
 use crate::Scene;
 
@@ -67,10 +66,14 @@ pub fn update(
                 ComboBox::from_label("")
                     .selected_text(format!("{}", &mut sobj.mesh_id))
                     .show_ui(&mut columns[1], |ui| {
-                        ui.selectable_value(&mut sobj.mesh_id, MeshId::EMPTY, "empty");
+                        ui.selectable_value(&mut sobj.mesh_id, AssetId::EMPTY, "empty");
 
-                        for mesh in asset_server.get_meshes() {
-                            ui.selectable_value(&mut sobj.mesh_id, mesh.id(), &mesh.name);
+                        for mesh in asset_server.meshes.iter() {
+                            ui.selectable_value(
+                                &mut sobj.mesh_id,
+                                mesh.id(),
+                                mesh.metadata.name.as_ref().unwrap(),
+                            );
                         }
                     });
             });

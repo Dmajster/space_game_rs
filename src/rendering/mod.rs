@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app::{Res, ResMut},
-    asset_server::AssetServer,
+    asset_server::{AssetServer, AssetId},
     scene::{Scene, SceneObjectId},
     Id,
 };
@@ -101,10 +101,10 @@ pub struct Vertex {
     pub uv: Vec2,
 }
 
-pub type MeshId = Id;
 
-pub struct MeshDescriptor {
-    pub name: String,
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct Mesh {
     pub positions: Vec<Vec3>,
     pub normals: Vec<Vec3>,
     pub uvs: Vec<Vec2>,
@@ -112,38 +112,8 @@ pub struct MeshDescriptor {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Mesh {
-    pub name: String,
-    id: MeshId,
-    pub positions: Vec<Vec3>,
-    pub normals: Vec<Vec3>,
-    pub uvs: Vec<Vec2>,
-    pub indices: Vec<u32>,
-}
+pub struct Texture {
 
-impl Mesh {
-    pub fn new(descriptor: MeshDescriptor) -> Self {
-        let id = MeshId::new();
-
-        let name = if descriptor.name.len() > 0 {
-            descriptor.name
-        } else {
-            String::from(format!("mesh_{}", &id))
-        };
-
-        Self {
-            name,
-            id,
-            positions: descriptor.positions,
-            normals: descriptor.normals,
-            uvs: descriptor.uvs,
-            indices: descriptor.indices,
-        }
-    }
-
-    pub fn id(&self) -> MeshId {
-        self.id
-    }
 }
 
 #[derive(Debug, Default)]
@@ -185,8 +155,8 @@ pub struct Renderer<'renderer> {
 
     pub render_pass_resources: HashMap<&'renderer str, wgpu::Texture>,
 
-    pub render_meshes: BTreeMap<MeshId, RenderMesh>,
-    missing_render_mesh_ids: RefCell<Vec<MeshId>>,
+    pub render_meshes: BTreeMap<AssetId, RenderMesh>,
+    missing_render_mesh_ids: RefCell<Vec<AssetId>>,
 
     pub scene_object_instances: wgpu::Buffer,
 
@@ -314,8 +284,8 @@ impl<'renderer> Renderer<'renderer> {
         }
     }
 
-    pub fn get_render_mesh(&self, mesh_id: &MeshId) -> Option<&RenderMesh> {
-        if *mesh_id == MeshId::EMPTY {
+    pub fn get_render_mesh(&self, mesh_id: &AssetId) -> Option<&RenderMesh> {
+        if *mesh_id == AssetId::EMPTY {
             return None;
         }
 
@@ -334,7 +304,7 @@ impl<'renderer> Renderer<'renderer> {
 
         while missing_render_mesh_ids.len() > 0 {
             let missing_render_mesh_id = missing_render_mesh_ids.pop().unwrap();
-            let mesh = asset_server.get_mesh(&missing_render_mesh_id).unwrap();
+            let mesh = asset_server.meshes.get(&missing_render_mesh_id).unwrap();
 
             let vertex_data = mesh
                 .positions
@@ -365,7 +335,7 @@ impl<'renderer> Renderer<'renderer> {
             ));
 
             self.render_meshes.insert(
-                mesh.id,
+                mesh.id(),
                 RenderMesh {
                     vertex_buffer_handle,
                     vertex_offset: 0,
