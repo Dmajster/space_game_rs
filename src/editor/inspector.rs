@@ -1,14 +1,13 @@
-use egui::{DragValue, Ui, Window};
+use egui::{Ui, Window};
 
 use crate::app::{Res, ResMut};
 use crate::asset_server::AssetServer;
-use crate::components::{
-    draw_camera_component, draw_light_component, draw_mesh_component, CameraComponent,
-    LightComponent, MeshComponent,
-};
+use crate::components::camera::CameraComponent;
+use crate::components::light::LightComponent;
+use crate::components::mesh::MeshComponent;
 use crate::editor::Editor;
 use crate::scene::SceneObjectId;
-use crate::Scene;
+use crate::{components, Scene};
 
 pub fn update(
     context: Res<egui::Context>,
@@ -37,40 +36,18 @@ pub fn update(
 
             ui.separator();
 
-            ui.heading("Transform");
-            ui.add_space(8.0);
-
-            ui.columns(4, |columns| {
-                columns[0].label("Position");
-                columns[1].add(DragValue::new(&mut sobj.position.x).speed(0.25).suffix("m"));
-                columns[2].add(DragValue::new(&mut sobj.position.y).speed(0.25).suffix("m"));
-                columns[3].add(DragValue::new(&mut sobj.position.z).speed(0.25).suffix("m"));
-            });
-            ui.columns(4, |columns| {
-                columns[0].label("Rotation");
-                columns[1].add(DragValue::new(&mut sobj.rotation.x).speed(1.0).suffix("°"));
-                columns[2].add(DragValue::new(&mut sobj.rotation.y).speed(1.0).suffix("°"));
-                columns[3].add(DragValue::new(&mut sobj.rotation.z).speed(1.0).suffix("°"));
-            });
-            ui.columns(4, |columns| {
-                columns[0].label("Scale");
-                columns[1].add(DragValue::new(&mut sobj.scale.x).speed(0.25).suffix("x"));
-                columns[2].add(DragValue::new(&mut sobj.scale.y).speed(0.25).suffix("x"));
-                columns[3].add(DragValue::new(&mut sobj.scale.z).speed(0.25).suffix("x"));
-            });
-
-            ui.separator();
+            components::transform::draw(ui, &mut sobj.transform_component);
 
             if let Some(mesh_component) = &mut sobj.mesh_component {
-                draw_mesh_component(ui, mesh_component, &mut asset_server);
+                components::mesh::draw(ui, mesh_component, &mut asset_server);
             }
 
             if let Some(light_component) = &mut sobj.light_component {
-                draw_light_component(ui);
+                components::light::draw(ui);
             }
 
             if let Some(camera_component) = &mut sobj.camera_component {
-                draw_camera_component(ui);
+                components::camera::draw(ui);
             }
         })
         .unwrap()

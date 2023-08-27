@@ -354,7 +354,7 @@ pub fn update_scene_object_transforms(scene: Res<Scene>, renderer: Res<Renderer>
         .scene_objects
         .iter()
         .map(|mut scene_object| {
-            let mut transform = scene_object.calculate_transform();
+            let mut transform = scene_object.transform_component.build_transform_matrix();
 
             loop {
                 if scene_object.parent_id != SceneObjectId::EMPTY {
@@ -364,7 +364,7 @@ pub fn update_scene_object_transforms(scene: Res<Scene>, renderer: Res<Renderer>
                         .find(|so| so.id() == scene_object.parent_id)
                         .unwrap();
 
-                    transform = parent.calculate_transform() * transform;
+                    transform = parent.transform_component.build_transform_matrix() * transform;
 
                     scene_object = parent;
                 } else {

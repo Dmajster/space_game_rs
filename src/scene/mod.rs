@@ -1,4 +1,4 @@
-use crate::Id;
+use crate::{Id, components::camera::CameraComponent};
 use glam::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -11,9 +11,10 @@ pub const DEFAULT_SCENE_PATH: &'static str = "./scene.data";
 
 pub mod scene_object;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Scene {
     pub scene_objects: Vec<SceneObject>,
+    pub camera_scene_object_id: SceneObjectId
 }
 
 impl Scene {
@@ -107,5 +108,18 @@ impl Scene {
             .unwrap();
 
         self.scene_objects.swap_remove(index);
+    }
+}
+
+impl Default for Scene {
+    fn default() -> Self {
+        let mut scene = Self { scene_objects: Default::default(), camera_scene_object_id: Default::default() };
+
+        let camera = scene.add_scene_object();
+        camera.camera_component = Some(CameraComponent::default());
+        camera.name = String::from("Camera");
+
+        scene.camera_scene_object_id = camera.id();
+        scene
     }
 }

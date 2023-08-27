@@ -1,6 +1,5 @@
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
-use winit::window::Window;
 
 pub mod opaque_pass;
 pub mod shadow_pass;
@@ -9,6 +8,7 @@ use crate::{
     app::{Res, ResMut},
     asset_server::AssetServer,
     rendering::Renderer,
+    scene::{scene_object::SceneObject, Scene},
 };
 
 use self::{opaque_pass::OpaqueRenderPass, shadow_pass::ShadowRenderPass};
@@ -32,25 +32,6 @@ impl SunUniform {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Camera {
-    pub transform: Mat4,
-    pub projection: Mat4,
-}
-
-impl Camera {
-    fn new(transform: Mat4, projection: Mat4) -> Self {
-        Self {
-            transform,
-            projection,
-        }
-    }
-
-    fn build_view_projection_matrix(&self) -> Mat4 {
-        self.projection * self.transform
-    }
-}
-
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
@@ -58,8 +39,12 @@ pub struct CameraUniform {
 }
 
 impl CameraUniform {
-    fn update_view_projection(&mut self, camera: &Camera) {
-        self.view_projection = camera.build_view_projection_matrix();
+    fn update_view_projection(&mut self, camera_scene_object: &SceneObject) {
+        self.view_projection = camera_scene_object
+            .camera_component
+            .as_ref()
+            .unwrap()
+            .build_view_projection_matrix(&camera_scene_object.transform_component);
     }
 }
 
@@ -69,7 +54,6 @@ pub struct Game {
     sun_uniform: SunUniform,
     pub sun_buffer: wgpu::Buffer,
 
-    pub camera: Camera,
     camera_uniform: CameraUniform,
     pub camera_buffer: wgpu::Buffer,
 
@@ -81,7 +65,7 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(renderer: &mut Renderer, window: &Window) -> Self {
+    pub fn new(renderer: &mut Renderer) -> Self {
         let sun = Sun {
             inverse_direction: Vec3::new(4.0, 5.0, 1.0),
             projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 20.0, 0.1),
@@ -96,15 +80,6 @@ impl Game {
                 contents: bytemuck::cast_slice(&[sun_uniform]),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
-
-        let camera = Camera::new(
-            Mat4::look_at_rh(Vec3::new(0.0, 5.0, 5.0), Vec3::ZERO, Vec3::Y),
-            Mat4::perspective_infinite_reverse_rh(
-                90.0f32.to_radians(),
-                window.inner_size().width as f32 / window.inner_size().height as f32,
-                0.1,
-            ),
-        );
 
         let camera_uniform = CameraUniform::default();
 
@@ -151,7 +126,6 @@ impl Game {
             sun,
             sun_uniform,
             sun_buffer,
-            camera,
             camera_uniform,
             camera_buffer,
             global_bind_group_layout,
@@ -162,21 +136,29 @@ impl Game {
     }
 }
 
-pub fn update(game: ResMut<Game>, renderer: ResMut<Renderer>, asset_server: Res<AssetServer>) {
+pub fn update(
+    game: ResMut<Game>,
+    scene: Res<Scene>,
+    renderer: ResMut<Renderer>,
+    asset_server: Res<AssetServer>,
+) {
     let asset_server = asset_server.get();
     let mut app = game.get_mut();
     let mut renderer = renderer.get_mut();
+    let scene = scene.get();
 
     renderer.create_render_meshes(&asset_server);
 
-    let camera = app.camera.clone();
-    app.camera_uniform.update_view_projection(&camera);
+    if let Some(camera_scene_object) = scene.get(scene.camera_scene_object_id) {
+        app.camera_uniform
+            .update_view_projection(&camera_scene_object);
 
-    renderer.queue.write_buffer(
-        &app.camera_buffer,
-        0,
-        bytemuck::cast_slice(&[app.camera_uniform]),
-    );
+        renderer.queue.write_buffer(
+            &app.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[app.camera_uniform]),
+        );
+    }
 
     let sun = app.sun.clone();
     app.sun_uniform.update(&sun);

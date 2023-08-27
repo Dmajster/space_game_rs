@@ -45,6 +45,12 @@ pub fn update(context: Res<egui::Context>, scene: ResMut<Scene>, editor: ResMut<
 
     for removed_id in changes.remove_scene_objects {
         scene.remove_scene_object(removed_id);
+
+        if editor.selected_scene_object_id == removed_id
+            || changes.selected_scene_object_id == removed_id
+        {
+            editor.selected_scene_object_id = SceneObjectId::EMPTY
+        }
     }
 
     if changes.selected_scene_object_id != SceneObjectId::EMPTY {

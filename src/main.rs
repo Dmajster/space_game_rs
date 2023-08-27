@@ -18,13 +18,13 @@ use winit::{
 
 mod app;
 mod asset_server;
+mod components;
 mod editor;
 mod game;
 mod importing;
 mod rendering;
 mod scene;
 mod ui;
-mod components;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Id(u64);
@@ -82,7 +82,7 @@ fn main() {
     let editor = Editor::new();
     let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
     let scene = Scene::read_from_file_or_new(&scene::DEFAULT_SCENE_PATH);
-    let game = Game::new(&mut renderer, &window);
+    let game = Game::new(&mut renderer);
 
     let mut app = App::default();
 

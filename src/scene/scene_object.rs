@@ -1,7 +1,8 @@
-use crate::components::{CameraComponent, LightComponent, MeshComponent};
 use glam::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+
+use crate::components::{camera::CameraComponent, light::LightComponent, mesh::MeshComponent, transform::TransformComponent};
 
 use super::SceneObjectId;
 
@@ -11,34 +12,13 @@ pub struct SceneObject {
     id: SceneObjectId,
     pub parent_id: SceneObjectId,
     pub children: Vec<SceneObjectId>,
-    pub position: Vec3,
-    pub rotation: Vec3,
-    pub scale: Vec3,
-
+    pub transform_component: TransformComponent,
     pub mesh_component: Option<MeshComponent>,
     pub light_component: Option<LightComponent>,
     pub camera_component: Option<CameraComponent>,
 }
 
 impl SceneObject {
-    pub fn calculate_transform(&self) -> Mat4 {
-        let cr = (self.rotation.x.to_radians() * 0.5).cos();
-        let sr = (self.rotation.x.to_radians() * 0.5).sin();
-        let cp = (self.rotation.y.to_radians() * 0.5).cos();
-        let sp = (self.rotation.y.to_radians() * 0.5).sin();
-        let cy = (self.rotation.z.to_radians() * 0.5).cos();
-        let sy = (self.rotation.z.to_radians() * 0.5).sin();
-
-        let rotation = Quat::from_xyzw(
-            cr * cp * cy + sr * sp * sy,
-            sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy,
-            cr * cp * sy - sr * sp * cy,
-        );
-
-        Mat4::from_scale_rotation_translation(self.scale, rotation, self.position)
-    }
-
     pub fn id(&self) -> SceneObjectId {
         self.id
     }
@@ -51,9 +31,7 @@ impl Default for SceneObject {
             id: SceneObjectId::new(),
             parent_id: SceneObjectId::EMPTY,
             children: vec![],
-            position: Vec3::ZERO,
-            rotation: Vec3::ZERO,
-            scale: Vec3::ONE,
+            transform_component: TransformComponent::default(),
             mesh_component: None,
             light_component: None,
             camera_component: None,
