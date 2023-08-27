@@ -148,6 +148,7 @@ pub fn update(
     let scene = scene.get();
 
     renderer.create_render_meshes(&asset_server);
+    renderer.create_render_materials(&asset_server);
 
     if let Some(camera_scene_object) = scene.get(scene.camera_scene_object_id) {
         app.camera_uniform

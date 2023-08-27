@@ -1,9 +1,10 @@
+use self::asset_id::AssetId;
+use crate::rendering::{Material, Mesh, Model, Texture};
+use serde::{Deserialize, Serialize};
 use std::{
     any::type_name,
     cell::{Ref, RefCell, RefMut},
-    fmt::Display,
     fs::{self},
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     path::Path,
     rc::Rc,
@@ -11,15 +12,6 @@ use std::{
 };
 
 pub mod asset_id;
-
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    rendering::{Material, Mesh, Model, Texture},
-    Id,
-};
-
-use self::asset_id::AssetId;
 
 pub const DEFAULT_PATH: &'static str = "./assets_server.data";
 

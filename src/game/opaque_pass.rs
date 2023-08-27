@@ -1,6 +1,6 @@
 use crate::{
     app::{Res, ResMut},
-    asset_server::{AssetServer, asset_id::AssetId},
+    asset_server::{asset_id::AssetId, AssetServer},
     game::Game,
     rendering::{self, RenderInstance, Renderer, RenderingRecorder, Vertex},
     Scene,
@@ -77,7 +77,7 @@ impl OpaqueRenderPass {
                     // Depth sampler
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&renderer.sampler),
+                        resource: wgpu::BindingResource::Sampler(&renderer.comparison_sampler),
                     },
                     // Shadow depth texture
                     wgpu::BindGroupEntry {
@@ -92,7 +92,11 @@ impl OpaqueRenderPass {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("opaque pass pipeline layout"),
-                    bind_group_layouts: &[&global_bind_group_layout, &bind_group_layout], //&bind_group_layout
+                    bind_group_layouts: &[
+                        &global_bind_group_layout,
+                        &bind_group_layout,
+                        &renderer.material_bind_group_layout,
+                    ], //&bind_group_layout
                     push_constant_ranges: &[],
                 });
 
@@ -222,25 +226,33 @@ pub fn render(
 
             let model = models.get(&model_component.model_id).unwrap();
 
-            for mesh_id in &model.mesh_ids {
-                if let Some(render_mesh) = renderer.get_render_mesh(mesh_id) {
-                    let vertex_buffer = renderer
-                        .mesh_buffers
-                        .get(&render_mesh.vertex_buffer_handle)
-                        .unwrap();
-                    let index_buffer = renderer
-                        .mesh_buffers
-                        .get(&render_mesh.index_buffer_handle)
-                        .unwrap();
+            for (mesh_id, material_id) in model.mesh_ids.iter().zip(model.material_ids.iter()) {
+                let render_mesh = renderer.get_render_mesh(mesh_id);
+                let render_material = renderer.get_render_material(material_id);
 
-                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                    render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    render_pass.draw_indexed(
-                        render_mesh.index_offset as u32
-                            ..(render_mesh.index_offset + render_mesh.index_count) as u32,
-                        render_mesh.vertex_offset as i32,
-                        index as u32..(index + 1) as u32,
-                    );
+                if let Some(render_mesh) = render_mesh {
+                    if let Some(render_material) = render_material {
+                        let vertex_buffer = renderer
+                            .mesh_buffers
+                            .get(&render_mesh.vertex_buffer_handle)
+                            .unwrap();
+                        let index_buffer = renderer
+                            .mesh_buffers
+                            .get(&render_mesh.index_buffer_handle)
+                            .unwrap();
+
+                        render_pass.set_bind_group(2, &render_material.bind_group, &[]);
+
+                        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                        render_pass
+                            .set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        render_pass.draw_indexed(
+                            render_mesh.index_offset as u32
+                                ..(render_mesh.index_offset + render_mesh.index_count) as u32,
+                            render_mesh.vertex_offset as i32,
+                            index as u32..(index + 1) as u32,
+                        );
+                    }
                 }
             }
         }

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app::{Res, ResMut},
-    asset_server::{AssetServer, asset_id::AssetId},
+    asset_server::{asset_id::AssetId, AssetServer},
     scene::{Scene, SceneObjectId},
 };
 
@@ -111,14 +111,32 @@ pub struct Mesh {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Model {
     pub mesh_ids: Vec<AssetId<Mesh>>,
+    pub material_ids: Vec<AssetId<Material>>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Texture {}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Texture {
+    pub width: u32,
+    pub height: u32,
+    pub format: wgpu::TextureFormat,
+    pub bytes: Vec<u8>,
+}
+
+impl Default for Texture {
+    fn default() -> Self {
+        Self {
+            width: Default::default(),
+            height: Default::default(),
+            format: wgpu::TextureFormat::Rgba32Float,
+            bytes: Default::default(),
+        }
+    }
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Material {
     pub color_texture_id: Option<AssetId<Texture>>,
+    pub normal_texture_id: Option<AssetId<Texture>>,
     pub metallic_roughness_texture_id: Option<AssetId<Texture>>, //TODO: split this into seperate textures
 }
 
@@ -141,6 +159,12 @@ pub struct RenderMesh {
     pub index_count: usize,
 }
 
+pub struct RenderMaterial {
+    color_texture: wgpu::Texture,
+    color_texture_view: wgpu::TextureView,
+    pub bind_group: wgpu::BindGroup,
+}
+
 pub const DEPTH_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 pub const SCENE_OBJECT_INSTANCES_BUFFER_SIZE: u64 = 20 * 1024 * 1024; //20MB
@@ -158,6 +182,9 @@ pub struct Renderer<'renderer> {
 
     pub render_pass_resources: HashMap<&'renderer str, wgpu::Texture>,
 
+    pub render_materials: BTreeMap<AssetId<Material>, RenderMaterial>,
+    missing_render_material_ids: RefCell<Vec<AssetId<Material>>>,
+
     pub render_meshes: BTreeMap<AssetId<Mesh>, RenderMesh>,
     missing_render_mesh_ids: RefCell<Vec<AssetId<Mesh>>>,
 
@@ -166,7 +193,11 @@ pub struct Renderer<'renderer> {
     pub mesh_buffers: Pool<wgpu::Buffer>,
     pub depth_texture: wgpu::Texture,
     pub depth_texture_view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
+
+    pub filtrable_sampler: wgpu::Sampler,
+    pub comparison_sampler: wgpu::Sampler,
+
+    pub material_bind_group_layout: wgpu::BindGroupLayout,
 
     // RENDER OBJECT CACHING. Has no reclaiming so it grows infinitely with each new variant...
     // Might be a problem. Reclaiming would require tracking object usage.
@@ -240,8 +271,20 @@ impl<'renderer> Renderer<'renderer> {
 
         let depth_texture_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("sampler"),
+        let filtrable_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("filtrable sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            compare: None,
+            ..Default::default()
+        });
+
+        let comparison_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("comparison sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -259,6 +302,53 @@ impl<'renderer> Renderer<'renderer> {
             mapped_at_creation: false,
         });
 
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("material bind group layout"),
+                entries: &[
+                    // Sampler
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    // Color texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // // Normal texture
+                    // wgpu::BindGroupLayoutEntry {
+                    //     binding: 2,
+                    //     visibility: wgpu::ShaderStages::FRAGMENT,
+                    //     ty: wgpu::BindingType::Texture {
+                    //         sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    //         view_dimension: wgpu::TextureViewDimension::D2,
+                    //         multisampled: false,
+                    //     },
+                    //     count: None,
+                    // },
+                    // // Metallic roughness texture
+                    // wgpu::BindGroupLayoutEntry {
+                    //     binding: 3,
+                    //     visibility: wgpu::ShaderStages::FRAGMENT,
+                    //     ty: wgpu::BindingType::Texture {
+                    //         sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    //         view_dimension: wgpu::TextureViewDimension::D2,
+                    //         multisampled: false,
+                    //     },
+                    //     count: None,
+                    // },
+                ],
+            });
+
         Self {
             surface,
             surface_capabilities,
@@ -270,14 +360,22 @@ impl<'renderer> Renderer<'renderer> {
             queue,
 
             render_pass_resources: Default::default(),
-            missing_render_mesh_ids: RefCell::new(Vec::new()),
 
             depth_texture,
             depth_texture_view,
-            sampler,
+
+            filtrable_sampler,
+            comparison_sampler,
+
+            render_materials: Default::default(),
+            missing_render_material_ids: RefCell::new(Vec::new()),
 
             render_meshes: Default::default(),
+            missing_render_mesh_ids: RefCell::new(Vec::new()),
+
             mesh_buffers: Default::default(),
+
+            material_bind_group_layout,
 
             _bind_group_cache: Default::default(),
             _bind_group_layout_cache: Default::default(),
@@ -298,6 +396,21 @@ impl<'renderer> Renderer<'renderer> {
             self.missing_render_mesh_ids
                 .borrow_mut()
                 .push(mesh_id.clone());
+            None
+        }
+    }
+
+    pub fn get_render_material(&self, material_id: &AssetId<Material>) -> Option<&RenderMaterial> {
+        if *material_id == AssetId::EMPTY {
+            return None;
+        }
+
+        if let Some(render_material) = self.render_materials.get(&material_id) {
+            Some(render_material)
+        } else {
+            self.missing_render_material_ids
+                .borrow_mut()
+                .push(material_id.clone());
             None
         }
     }
@@ -347,6 +460,92 @@ impl<'renderer> Renderer<'renderer> {
                     index_buffer_handle,
                     index_offset: 0,
                     index_count: mesh.indices.len(),
+                },
+            );
+        }
+    }
+
+    pub fn create_render_materials(&mut self, asset_server: &AssetServer) {
+        let mut missing_render_material_ids = self.missing_render_material_ids.borrow_mut();
+        let materials = asset_server.materials();
+        let textures = asset_server.textures();
+
+        while missing_render_material_ids.len() > 0 {
+            let missing_render_material_ids = missing_render_material_ids.pop().unwrap();
+            let material = materials.get(&missing_render_material_ids).unwrap();
+
+            let color_texture = {
+                if let Some(color_texture_id) = material.color_texture_id {
+                    let asset_texture = textures.get(&color_texture_id).unwrap();
+
+                    asset_texture.asset.clone()
+                } else {
+                    Texture {
+                        width: 1,
+                        height: 1,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        bytes: vec![255, 255, 255, 255],
+                    }
+                }
+            };
+
+            let extents = wgpu::Extent3d {
+                width: color_texture.width,
+                height: color_texture.height,
+                depth_or_array_layers: 1,
+            };
+
+            let wgpu_color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("color texture"),
+                size: extents,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: color_texture.format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+
+            self.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &wgpu_color_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &color_texture.bytes,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * extents.width),
+                    rows_per_image: Some(extents.height),
+                },
+                extents,
+            );
+
+            let color_texture_view =
+                wgpu_color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("material bind group"),
+                layout: &self.material_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Sampler(&self.filtrable_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&color_texture_view),
+                    },
+                ],
+            });
+
+            self.render_materials.insert(
+                material.id(),
+                RenderMaterial {
+                    color_texture: wgpu_color_texture,
+                    color_texture_view,
+                    bind_group,
                 },
             );
         }

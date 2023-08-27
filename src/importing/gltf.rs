@@ -1,9 +1,9 @@
 use glam::{Vec2, Vec3};
-use gltf::{accessor::DataType, buffer, image, texture, Primitive, Semantic};
+use gltf::{accessor::DataType, buffer, image, texture, Semantic};
 use std::{mem, path::Path};
 
 use crate::{
-    asset_server::{Asset, AssetMetadata, AssetServer, asset_id::AssetId},
+    asset_server::{asset_id::AssetId, AssetMetadata, AssetServer},
     rendering::{Material, Mesh, Model, Texture},
 };
 
@@ -37,10 +37,12 @@ where
             let mesh = create_primitive(&buffers, &primitive);
             let mesh_metadata = AssetMetadata { name: mesh_name };
 
-            get_or_create_material(&primitive.material(), &images, asset_server);
+            let material_asset_id =
+                get_or_create_material(&primitive.material(), &images, asset_server);
 
             let mesh_asset = meshes.add(mesh, mesh_metadata);
             model_asset.asset.mesh_ids.push(mesh_asset.id());
+            model_asset.asset.material_ids.push(material_asset_id);
         }
     }
 }
@@ -97,14 +99,12 @@ fn create_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primiti
 }
 
 fn get_or_create_asset_texture(
-    info: texture::Info<'_>,
+    texture: texture::Texture<'_>,
     images: &Vec<image::Data>,
     asset_server: &AssetServer,
 ) -> AssetId<Texture> {
-    let texture = info.texture();
     let index = texture.source().index();
     let image = images.get(index).unwrap();
-
     let name = if let Some(texture_name) = texture.name() {
         Some(format!("{}", texture_name.to_owned()))
     } else {
@@ -112,7 +112,15 @@ fn get_or_create_asset_texture(
     };
 
     let mut textures = asset_server.textures_mut();
-    let asset = textures.add(Texture {}, AssetMetadata { name });
+    let asset = textures.add(
+        Texture {
+            width: image.width,
+            height: image.height,
+            format: get_wgpu_texture_format(image.format),
+            bytes: image.pixels.clone(),
+        },
+        AssetMetadata { name },
+    );
 
     asset.id()
 }
@@ -130,7 +138,14 @@ fn get_or_create_material(
 
     let color_texture_id =
         if let Some(info) = material.pbr_metallic_roughness().base_color_texture() {
-            Some(get_or_create_asset_texture(info, images, asset_server))
+            Some(get_or_create_asset_texture(info.texture(), images, asset_server))
+        } else {
+            None
+        };
+
+    let normal_texture_id =
+        if let Some(normal_texture) = material.normal_texture() {
+            Some(get_or_create_asset_texture(normal_texture.texture(), images, asset_server))
         } else {
             None
         };
@@ -139,7 +154,7 @@ fn get_or_create_material(
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
     {
-        Some(get_or_create_asset_texture(info, images, asset_server))
+        Some(get_or_create_asset_texture(info.texture(), images, asset_server))
     } else {
         None
     };
@@ -148,6 +163,7 @@ fn get_or_create_material(
     let asset = materials.add(
         Material {
             color_texture_id,
+            normal_texture_id,
             metallic_roughness_texture_id,
         },
         AssetMetadata { name },
@@ -194,5 +210,20 @@ fn transmute_byte_vec<T>(mut bytes: Vec<u8>) -> Vec<T> {
         mem::forget(bytes);
 
         Vec::from_raw_parts(mutptr, length, capacity)
+    }
+}
+
+fn get_wgpu_texture_format(format: image::Format) -> wgpu::TextureFormat {
+    match format {
+        image::Format::R8 => wgpu::TextureFormat::R8Unorm,
+        image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
+        image::Format::R8G8B8 => unimplemented!(),
+        image::Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8Unorm,
+        image::Format::R16 => wgpu::TextureFormat::R16Unorm,
+        image::Format::R16G16 => wgpu::TextureFormat::Rg16Unorm,
+        image::Format::R16G16B16 => unimplemented!(),
+        image::Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Unorm,
+        image::Format::R32G32B32FLOAT => unimplemented!(),
+        image::Format::R32G32B32A32FLOAT => wgpu::TextureFormat::Rgba32Float,
     }
 }

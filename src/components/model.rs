@@ -1,7 +1,10 @@
 use egui::ComboBox;
 use serde::{Deserialize, Serialize};
 
-use crate::{asset_server::{AssetServer, asset_id::AssetId}, rendering::Model};
+use crate::{
+    asset_server::{asset_id::AssetId, AssetServer},
+    rendering::Model,
+};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ModelComponent {
