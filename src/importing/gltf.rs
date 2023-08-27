@@ -1,19 +1,22 @@
 use glam::{Vec2, Vec3};
-use gltf::{accessor::DataType, buffer, Primitive, Semantic};
+use gltf::{accessor::DataType, buffer, image, texture, Primitive, Semantic};
 use std::{mem, path::Path};
 
 use crate::{
-    asset_server::{AssetMetadata, AssetServer},
-    rendering::{Mesh, Model},
+    asset_server::{Asset, AssetMetadata, AssetServer, asset_id::AssetId},
+    rendering::{Material, Mesh, Model, Texture},
 };
 
 //TODO: Remove duplicates
 //TODO: Zeux's mesh optimizer https://github.com/zeux/meshoptimizer (but as a processor step not loader)
-pub fn load<P>(path: &P, asset_server: &mut AssetServer)
+pub fn load<P>(path: &P, asset_server: &AssetServer)
 where
     P: AsRef<Path>,
 {
     let (gltf, buffers, images) = gltf::import(&path).unwrap();
+
+    let mut models = asset_server.models_mut();
+    let mut meshes = asset_server.meshes_mut();
 
     for mesh in gltf.meshes() {
         let model_name = if let Some(mesh_name) = mesh.name() {
@@ -22,9 +25,7 @@ where
             None
         };
 
-        let model_asset = asset_server
-            .models
-            .add(Model::default(), AssetMetadata { name: model_name });
+        let model_asset = models.add(Model::default(), AssetMetadata { name: model_name });
 
         for primitive in mesh.primitives() {
             let mesh_name = if let Some(mesh_name) = mesh.name() {
@@ -33,16 +34,18 @@ where
                 None
             };
 
-            let mesh = load_primitive(&buffers, &primitive);
+            let mesh = create_primitive(&buffers, &primitive);
             let mesh_metadata = AssetMetadata { name: mesh_name };
 
-            let mesh_asset = asset_server.meshes.add(mesh, mesh_metadata);
-            model_asset.asset.meshes.push(mesh_asset.id());
+            get_or_create_material(&primitive.material(), &images, asset_server);
+
+            let mesh_asset = meshes.add(mesh, mesh_metadata);
+            model_asset.asset.mesh_ids.push(mesh_asset.id());
         }
     }
 }
 
-fn load_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primitive<'_>) -> Mesh {
+fn create_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primitive<'_>) -> Mesh {
     let positions = primitive
         .attributes()
         .find_map(|(semantic, accessor)| {
@@ -91,6 +94,66 @@ fn load_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primitive
         uvs,
         indices,
     }
+}
+
+fn get_or_create_asset_texture(
+    info: texture::Info<'_>,
+    images: &Vec<image::Data>,
+    asset_server: &AssetServer,
+) -> AssetId<Texture> {
+    let texture = info.texture();
+    let index = texture.source().index();
+    let image = images.get(index).unwrap();
+
+    let name = if let Some(texture_name) = texture.name() {
+        Some(format!("{}", texture_name.to_owned()))
+    } else {
+        None
+    };
+
+    let mut textures = asset_server.textures_mut();
+    let asset = textures.add(Texture {}, AssetMetadata { name });
+
+    asset.id()
+}
+
+fn get_or_create_material(
+    material: &gltf::material::Material,
+    images: &Vec<image::Data>,
+    asset_server: &AssetServer,
+) -> AssetId<Material> {
+    let name = if let Some(material_name) = material.name() {
+        Some(format!("{}", material_name.to_owned()))
+    } else {
+        None
+    };
+
+    let color_texture_id =
+        if let Some(info) = material.pbr_metallic_roughness().base_color_texture() {
+            Some(get_or_create_asset_texture(info, images, asset_server))
+        } else {
+            None
+        };
+
+    let metallic_roughness_texture_id = if let Some(info) = material
+        .pbr_metallic_roughness()
+        .metallic_roughness_texture()
+    {
+        Some(get_or_create_asset_texture(info, images, asset_server))
+    } else {
+        None
+    };
+
+    let mut materials = asset_server.materials_mut();
+    let asset = materials.add(
+        Material {
+            color_texture_id,
+            metallic_roughness_texture_id,
+        },
+        AssetMetadata { name },
+    );
+
+    asset.id()
 }
 
 fn get_data_from_accessor<T>(buffers: &Vec<buffer::Data>, accessor: &gltf::Accessor) -> Vec<T> {

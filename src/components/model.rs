@@ -1,11 +1,11 @@
 use egui::ComboBox;
 use serde::{Deserialize, Serialize};
 
-use crate::asset_server::{AssetId, AssetServer};
+use crate::{asset_server::{AssetServer, asset_id::AssetId}, rendering::Model};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ModelComponent {
-    pub model_id: AssetId,
+    pub model_id: AssetId<Model>,
 }
 
 pub fn draw(
@@ -22,9 +22,13 @@ pub fn draw(
         ComboBox::from_label("")
             .selected_text(format!("{}", model_component.model_id))
             .show_ui(&mut columns[1], |ui| {
-                ui.selectable_value(&mut model_component.model_id, AssetId::EMPTY, "empty");
+                ui.selectable_value(
+                    &mut model_component.model_id,
+                    AssetId::<Model>::EMPTY,
+                    "empty",
+                );
 
-                for model in asset_server.models.iter() {
+                for model in asset_server.models().iter() {
                     ui.selectable_value(
                         &mut model_component.model_id,
                         model.id(),

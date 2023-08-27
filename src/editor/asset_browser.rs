@@ -35,16 +35,18 @@ pub fn update(editor: Res<Editor>, context: Res<egui::Context>, asset_server: Re
             ui.separator();
 
             ScrollArea::vertical().show(ui, |scroll_area| {
+                let mut models = asset_server.models_mut();
+                
                 scroll_area.columns(column_count, |columns| {
-                    for mut i in 0..asset_server.models.len() as isize {
+                    for mut i in 0..models.len() as isize {
                         let wrapped_index = i as usize % column_count;
 
                         columns[wrapped_index].group(|ui| {
-                            if let Some(mesh) = asset_server.models.get_at_index(i as usize) {
+                            if let Some(mesh) = models.get_at_index(i as usize) {
                                 ui.label(mesh.metadata.name.as_ref().unwrap());
 
                                 if ui.button("delete").clicked() {
-                                    asset_server.models.remove_at_index(i as usize);
+                                    models.remove_at_index(i as usize);
 
                                     i -= 1;
                                 }

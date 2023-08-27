@@ -1,8 +1,9 @@
 use crate::{
     app::{Res, ResMut},
+    asset_server::{AssetServer, asset_id::AssetId},
     game::Game,
     rendering::{self, RenderInstance, Renderer, RenderingRecorder, Vertex},
-    Scene, asset_server::{AssetServer, AssetId},
+    Scene,
 };
 
 pub struct OpaqueRenderPass {
@@ -211,15 +212,17 @@ pub fn render(
     render_pass.set_bind_group(1, &app.opaque_pass.bind_group, &[]);
     render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
 
+    let models = asset_server.models();
+
     for (index, scene_object) in scene.scene_objects.iter().enumerate() {
         if let Some(model_component) = &scene_object.model_component {
             if model_component.model_id == AssetId::EMPTY {
                 continue;
             }
-            
-            let model = asset_server.models.get(&model_component.model_id).unwrap();
 
-            for mesh_id in &model.meshes {
+            let model = models.get(&model_component.model_id).unwrap();
+
+            for mesh_id in &model.mesh_ids {
                 if let Some(render_mesh) = renderer.get_render_mesh(mesh_id) {
                     let vertex_buffer = renderer
                         .mesh_buffers

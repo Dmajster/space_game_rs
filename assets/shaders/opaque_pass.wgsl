@@ -56,7 +56,7 @@ fn vs_main(
         out.shadow_position.z,
         out.shadow_position.w
     );
-    out.normal = (camera.view_proj * model_matrix * vec4<f32>(vertex.normal, 1.0)).xyz;
+    out.normal = normalize((model_matrix * vec4<f32>(vertex.normal, 0.0)).xyz);
     return out;
 }
 

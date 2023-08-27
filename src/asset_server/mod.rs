@@ -1,25 +1,31 @@
 use std::{
     any::type_name,
+    cell::{Ref, RefCell, RefMut},
+    fmt::Display,
     fs::{self},
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     path::Path,
+    rc::Rc,
     slice::Iter,
 };
+
+pub mod asset_id;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    rendering::{Mesh, Model, Texture},
+    rendering::{Material, Mesh, Model, Texture},
     Id,
 };
 
-pub const DEFAULT_PATH: &'static str = "./assets_server.data";
+use self::asset_id::AssetId;
 
-pub type AssetId = Id;
+pub const DEFAULT_PATH: &'static str = "./assets_server.data";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Asset<T> {
-    id: AssetId,
+    id: AssetId<T>,
     pub metadata: AssetMetadata,
     pub asset: T,
 }
@@ -45,7 +51,7 @@ pub struct AssetMetadata {
 
 impl<T> Asset<T> {
     pub fn new(asset: T, mut metadata: AssetMetadata) -> Self {
-        let id = AssetId::new();
+        let typed_id = AssetId::<T>::new();
 
         metadata.name = if let Some(name) = metadata.name {
             Some(name)
@@ -53,18 +59,18 @@ impl<T> Asset<T> {
             Some(format!(
                 "{}_{}",
                 type_name::<T>().split("::").last().unwrap(),
-                id.0
+                typed_id.id().0
             ))
         };
 
         Self {
-            id,
+            id: typed_id,
             metadata,
             asset,
         }
     }
 
-    pub fn id(&self) -> AssetId {
+    pub fn id(&self) -> AssetId<T> {
         self.id
     }
 }
@@ -84,7 +90,7 @@ impl<T> AssetStore<T> {
         self.assets.remove(index);
     }
 
-    pub fn get(&self, asset_id: &AssetId) -> Option<&Asset<T>> {
+    pub fn get(&self, asset_id: &AssetId<T>) -> Option<&Asset<T>> {
         self.assets.iter().find(|asset| asset.id() == *asset_id)
     }
 
@@ -103,9 +109,10 @@ impl<T> AssetStore<T> {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AssetServer {
-    pub models: AssetStore<Model>,
-    pub meshes: AssetStore<Mesh>,
-    pub textures: AssetStore<Texture>,
+    models: Rc<RefCell<AssetStore<Model>>>,
+    meshes: Rc<RefCell<AssetStore<Mesh>>>,
+    textures: Rc<RefCell<AssetStore<Texture>>>,
+    materials: Rc<RefCell<AssetStore<Material>>>,
 }
 
 impl AssetServer {
@@ -131,5 +138,37 @@ impl AssetServer {
         let compressed_bytes = lz4_flex::compress_prepend_size(&bytes);
 
         fs::write(path, compressed_bytes).unwrap();
+    }
+
+    pub fn models(&self) -> Ref<'_, AssetStore<Model>> {
+        self.models.borrow()
+    }
+
+    pub fn models_mut(&self) -> RefMut<'_, AssetStore<Model>> {
+        self.models.borrow_mut()
+    }
+
+    pub fn meshes(&self) -> Ref<'_, AssetStore<Mesh>> {
+        self.meshes.borrow()
+    }
+
+    pub fn meshes_mut(&self) -> RefMut<'_, AssetStore<Mesh>> {
+        self.meshes.borrow_mut()
+    }
+
+    pub fn textures(&self) -> Ref<'_, AssetStore<Texture>> {
+        self.textures.borrow()
+    }
+
+    pub fn textures_mut(&self) -> RefMut<'_, AssetStore<Texture>> {
+        self.textures.borrow_mut()
+    }
+
+    pub fn materials(&self) -> Ref<'_, AssetStore<Material>> {
+        self.materials.borrow()
+    }
+
+    pub fn materials_mut(&self) -> RefMut<'_, AssetStore<Material>> {
+        self.materials.borrow_mut()
     }
 }

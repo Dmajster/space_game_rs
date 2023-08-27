@@ -68,7 +68,7 @@ impl Game {
     pub fn new(renderer: &mut Renderer) -> Self {
         let sun = Sun {
             inverse_direction: Vec3::new(4.0, 5.0, 1.0),
-            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 20.0, 0.1),
+            projection: Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 100.0, 0.1),
         };
 
         let sun_uniform = SunUniform::default();

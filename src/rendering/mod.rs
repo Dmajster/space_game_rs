@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app::{Res, ResMut},
-    asset_server::{AssetId, AssetServer},
+    asset_server::{AssetServer, asset_id::AssetId},
     scene::{Scene, SceneObjectId},
 };
 
@@ -110,14 +110,17 @@ pub struct Mesh {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Model {
-    pub meshes: Vec<AssetId>,
+    pub mesh_ids: Vec<AssetId<Mesh>>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Texture {}
 
-#[derive(Debug, Default)]
-pub struct Material {}
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct Material {
+    pub color_texture_id: Option<AssetId<Texture>>,
+    pub metallic_roughness_texture_id: Option<AssetId<Texture>>, //TODO: split this into seperate textures
+}
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -155,8 +158,8 @@ pub struct Renderer<'renderer> {
 
     pub render_pass_resources: HashMap<&'renderer str, wgpu::Texture>,
 
-    pub render_meshes: BTreeMap<AssetId, RenderMesh>,
-    missing_render_mesh_ids: RefCell<Vec<AssetId>>,
+    pub render_meshes: BTreeMap<AssetId<Mesh>, RenderMesh>,
+    missing_render_mesh_ids: RefCell<Vec<AssetId<Mesh>>>,
 
     pub scene_object_instances: wgpu::Buffer,
 
@@ -284,7 +287,7 @@ impl<'renderer> Renderer<'renderer> {
         }
     }
 
-    pub fn get_render_mesh(&self, mesh_id: &AssetId) -> Option<&RenderMesh> {
+    pub fn get_render_mesh(&self, mesh_id: &AssetId<Mesh>) -> Option<&RenderMesh> {
         if *mesh_id == AssetId::EMPTY {
             return None;
         }
@@ -301,10 +304,11 @@ impl<'renderer> Renderer<'renderer> {
 
     pub fn create_render_meshes(&mut self, asset_server: &AssetServer) {
         let mut missing_render_mesh_ids = self.missing_render_mesh_ids.borrow_mut();
+        let meshes = asset_server.meshes();
 
         while missing_render_mesh_ids.len() > 0 {
             let missing_render_mesh_id = missing_render_mesh_ids.pop().unwrap();
-            let mesh = asset_server.meshes.get(&missing_render_mesh_id).unwrap();
+            let mesh = meshes.get(&missing_render_mesh_id).unwrap();
 
             let vertex_data = mesh
                 .positions
