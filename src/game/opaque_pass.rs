@@ -2,7 +2,7 @@ use crate::{
     app::{Res, ResMut},
     game::Game,
     rendering::{self, RenderInstance, Renderer, RenderingRecorder, Vertex},
-    Scene,
+    Scene, asset_server::{AssetServer, AssetId},
 };
 
 pub struct OpaqueRenderPass {
@@ -169,10 +169,12 @@ pub fn render(
     scene: Res<Scene>,
     renderer: Res<Renderer>,
     rendering_recorder: ResMut<Option<RenderingRecorder>>,
+    asset_server: Res<AssetServer>,
 ) {
     let app = game.get();
     let scene = scene.get();
     let renderer = renderer.get();
+    let asset_server = asset_server.get();
     let mut rendering_recorder = rendering_recorder.get_mut();
     let rendering_recorder = rendering_recorder.as_mut().unwrap();
 
@@ -210,25 +212,33 @@ pub fn render(
     render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
 
     for (index, scene_object) in scene.scene_objects.iter().enumerate() {
-        if let Some(mesh_component) = &scene_object.mesh_component {
-            if let Some(render_mesh) = renderer.get_render_mesh(&mesh_component.mesh_id) {
-                let vertex_buffer = renderer
-                    .mesh_buffers
-                    .get(&render_mesh.vertex_buffer_handle)
-                    .unwrap();
-                let index_buffer = renderer
-                    .mesh_buffers
-                    .get(&render_mesh.index_buffer_handle)
-                    .unwrap();
+        if let Some(model_component) = &scene_object.model_component {
+            if model_component.model_id == AssetId::EMPTY {
+                continue;
+            }
+            
+            let model = asset_server.models.get(&model_component.model_id).unwrap();
 
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(
-                    render_mesh.index_offset as u32
-                        ..(render_mesh.index_offset + render_mesh.index_count) as u32,
-                    render_mesh.vertex_offset as i32,
-                    index as u32..(index + 1) as u32,
-                );
+            for mesh_id in &model.meshes {
+                if let Some(render_mesh) = renderer.get_render_mesh(mesh_id) {
+                    let vertex_buffer = renderer
+                        .mesh_buffers
+                        .get(&render_mesh.vertex_buffer_handle)
+                        .unwrap();
+                    let index_buffer = renderer
+                        .mesh_buffers
+                        .get(&render_mesh.index_buffer_handle)
+                        .unwrap();
+
+                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(
+                        render_mesh.index_offset as u32
+                            ..(render_mesh.index_offset + render_mesh.index_count) as u32,
+                        render_mesh.vertex_offset as i32,
+                        index as u32..(index + 1) as u32,
+                    );
+                }
             }
         }
     }

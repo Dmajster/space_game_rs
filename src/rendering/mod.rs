@@ -109,6 +109,11 @@ pub struct Mesh {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
+pub struct Model {
+    pub meshes: Vec<AssetId>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Texture {}
 
 #[derive(Debug, Default)]

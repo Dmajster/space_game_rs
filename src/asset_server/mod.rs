@@ -2,13 +2,14 @@ use std::{
     any::type_name,
     fs::{self},
     ops::{Deref, DerefMut},
-    path::Path, slice::Iter,
+    path::Path,
+    slice::Iter,
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    rendering::{Mesh, Texture},
+    rendering::{Mesh, Model, Texture},
     Id,
 };
 
@@ -102,6 +103,7 @@ impl<T> AssetStore<T> {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AssetServer {
+    pub models: AssetStore<Model>,
     pub meshes: AssetStore<Mesh>,
     pub textures: AssetStore<Texture>,
 }

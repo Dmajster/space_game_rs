@@ -1,98 +1,103 @@
 use glam::{Vec2, Vec3};
-use gltf::{accessor::DataType, Gltf, Semantic};
-use std::{fs, mem, path::Path};
+use gltf::{accessor::DataType, buffer, Primitive, Semantic};
+use std::{mem, path::Path};
 
 use crate::{
     asset_server::{AssetMetadata, AssetServer},
-    rendering::Mesh,
+    rendering::{Mesh, Model},
 };
 
+//TODO: Remove duplicates
+//TODO: Zeux's mesh optimizer https://github.com/zeux/meshoptimizer (but as a processor step not loader)
 pub fn load<P>(path: &P, asset_server: &mut AssetServer)
 where
     P: AsRef<Path>,
 {
-    let gltf = Gltf::open(&path).unwrap();
+    let (gltf, buffers, images) = gltf::import(&path).unwrap();
 
     for mesh in gltf.meshes() {
+        let model_name = if let Some(mesh_name) = mesh.name() {
+            Some(format!("{}", mesh_name.to_owned()))
+        } else {
+            None
+        };
+
+        let model_asset = asset_server
+            .models
+            .add(Model::default(), AssetMetadata { name: model_name });
+
         for primitive in mesh.primitives() {
-            let name = if let Some(name) = mesh.name() {
-                Some(name.to_owned())
+            let mesh_name = if let Some(mesh_name) = mesh.name() {
+                Some(format!("{}_{}", mesh_name.to_owned(), primitive.index()))
             } else {
                 None
             };
 
-            let positions = primitive
-                .attributes()
-                .find_map(|(semantic, accessor)| {
-                    if semantic == Semantic::Positions {
-                        Some(get_data_from_accessor::<P, Vec3>(&path, &accessor))
-                    } else {
-                        None
-                    }
-                })
-                .unwrap();
+            let mesh = load_primitive(&buffers, &primitive);
+            let mesh_metadata = AssetMetadata { name: mesh_name };
 
-            let normals = primitive
-                .attributes()
-                .find_map(|(semantic, accessor)| {
-                    if semantic == Semantic::Normals {
-                        Some(get_data_from_accessor::<P, Vec3>(&path, &accessor))
-                    } else {
-                        None
-                    }
-                })
-                .unwrap();
-
-            let uvs = primitive
-                .attributes()
-                .find_map(|(semantic, accessor)| {
-                    if semantic == Semantic::TexCoords(0) {
-                        Some(get_data_from_accessor::<P, Vec2>(&path, &accessor))
-                    } else {
-                        None
-                    }
-                })
-                .unwrap();
-
-            let indices = match primitive.indices().unwrap().data_type() {
-                DataType::U16 => {
-                    get_data_from_accessor::<P, u16>(&path, &primitive.indices().unwrap())
-                        .into_iter()
-                        .map(|index| index as u32)
-                        .collect::<Vec<_>>()
-                }
-                DataType::U32 => {
-                    get_data_from_accessor::<P, u32>(&path, &primitive.indices().unwrap())
-                }
-                _ => todo!(),
-            };
-
-            asset_server.meshes.add(
-                Mesh {
-                    positions,
-                    normals,
-                    uvs,
-                    indices,
-                },
-                AssetMetadata { name },
-            );
+            let mesh_asset = asset_server.meshes.add(mesh, mesh_metadata);
+            model_asset.asset.meshes.push(mesh_asset.id());
         }
     }
 }
 
-fn get_data_from_accessor<P, T>(path: &P, accessor: &gltf::Accessor) -> Vec<T>
-where
-    P: AsRef<Path>,
-{
+fn load_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primitive<'_>) -> Mesh {
+    let positions = primitive
+        .attributes()
+        .find_map(|(semantic, accessor)| {
+            if semantic == Semantic::Positions {
+                Some(get_data_from_accessor::<Vec3>(&buffers, &accessor))
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let normals = primitive
+        .attributes()
+        .find_map(|(semantic, accessor)| {
+            if semantic == Semantic::Normals {
+                Some(get_data_from_accessor::<Vec3>(&buffers, &accessor))
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let uvs = primitive
+        .attributes()
+        .find_map(|(semantic, accessor)| {
+            if semantic == Semantic::TexCoords(0) {
+                Some(get_data_from_accessor::<Vec2>(&buffers, &accessor))
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let indices = match primitive.indices().unwrap().data_type() {
+        DataType::U16 => get_data_from_accessor::<u16>(&buffers, &primitive.indices().unwrap())
+            .into_iter()
+            .map(|index| index as u32)
+            .collect::<Vec<_>>(),
+        DataType::U32 => get_data_from_accessor::<u32>(&buffers, &primitive.indices().unwrap()),
+        _ => todo!(),
+    };
+
+    Mesh {
+        positions,
+        normals,
+        uvs,
+        indices,
+    }
+}
+
+fn get_data_from_accessor<T>(buffers: &Vec<buffer::Data>, accessor: &gltf::Accessor) -> Vec<T> {
     let view = accessor.view().unwrap();
     let buffer = view.buffer();
 
-    let buffer_data = match buffer.source() {
-        gltf::buffer::Source::Bin => todo!(),
-        gltf::buffer::Source::Uri(uri) => {
-            fs::read(path.as_ref().parent().unwrap().join(uri)).unwrap()
-        }
-    };
+    let buffer_data = buffers.get(buffer.index()).unwrap();
 
     let from = view.offset() + accessor.offset();
     let to = view.offset() + accessor.offset() + accessor.count() * accessor.size();

@@ -4,7 +4,7 @@ use crate::app::{Res, ResMut};
 use crate::asset_server::AssetServer;
 use crate::components::camera::CameraComponent;
 use crate::components::light::LightComponent;
-use crate::components::mesh::MeshComponent;
+use crate::components::model::ModelComponent;
 use crate::editor::Editor;
 use crate::scene::SceneObjectId;
 use crate::{components, Scene};
@@ -30,7 +30,7 @@ pub fn update(
             let sobj = scene.get_mut(editor.selected_scene_object_id).unwrap();
 
             ui.columns(2, |columns| {
-                columns[0].label("Name");
+                columns[0].heading("Name");
                 columns[1].text_edit_singleline(&mut sobj.name);
             });
 
@@ -38,8 +38,8 @@ pub fn update(
 
             components::transform::draw(ui, &mut sobj.transform_component);
 
-            if let Some(mesh_component) = &mut sobj.mesh_component {
-                components::mesh::draw(ui, mesh_component, &mut asset_server);
+            if let Some(model_component) = &mut sobj.model_component {
+                components::model::draw(ui, model_component, &mut asset_server);
             }
 
             if let Some(light_component) = &mut sobj.light_component {
@@ -62,8 +62,8 @@ pub fn update(
 fn ui_tree_context_menu(ui: &mut Ui, editor: &Editor, scene: &mut Scene) {
     let scene_object = scene.get_mut(editor.selected_scene_object_id).unwrap();
 
-    if ui.button("add mesh").clicked() {
-        scene_object.mesh_component = Some(MeshComponent::default());
+    if ui.button("add model").clicked() {
+        scene_object.model_component = Some(ModelComponent::default());
         ui.close_menu();
     }
     if ui.button("add light").clicked() {

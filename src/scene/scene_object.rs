@@ -2,7 +2,7 @@ use glam::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-use crate::components::{camera::CameraComponent, light::LightComponent, mesh::MeshComponent, transform::TransformComponent};
+use crate::components::{camera::CameraComponent, light::LightComponent, model::ModelComponent, transform::TransformComponent};
 
 use super::SceneObjectId;
 
@@ -13,7 +13,7 @@ pub struct SceneObject {
     pub parent_id: SceneObjectId,
     pub children: Vec<SceneObjectId>,
     pub transform_component: TransformComponent,
-    pub mesh_component: Option<MeshComponent>,
+    pub model_component: Option<ModelComponent>,
     pub light_component: Option<LightComponent>,
     pub camera_component: Option<CameraComponent>,
 }
@@ -32,7 +32,7 @@ impl Default for SceneObject {
             parent_id: SceneObjectId::EMPTY,
             children: vec![],
             transform_component: TransformComponent::default(),
-            mesh_component: None,
+            model_component: None,
             light_component: None,
             camera_component: None,
         }
