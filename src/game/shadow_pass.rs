@@ -1,7 +1,7 @@
 use crate::{
     app::{Res, ResMut},
     game::Game,
-    rendering::{self, RenderInstance, Renderer, Vertex, RenderingRecorder},
+    rendering::{self, RenderInstance, Renderer, RenderingRecorder, Vertex},
     Scene,
 };
 
@@ -149,42 +149,47 @@ pub fn render(
     let mut rendering_recorder = rendering_recorder.get_mut();
     let rendering_recorder = rendering_recorder.as_mut().unwrap();
 
-    let mut render_pass = rendering_recorder.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("shadow pass"),
-        color_attachments: &[],
-        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &game.shadow_pass.texture_view,
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(0.0),
-                store: true,
-            }),
-            stencil_ops: None,
-        }),
-    });
+    let mut render_pass =
+        rendering_recorder
+            .encoder
+            .begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shadow pass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &game.shadow_pass.texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: true,
+                    }),
+                    stencil_ops: None,
+                }),
+            });
 
     render_pass.set_pipeline(&game.shadow_pass.pipeline);
     render_pass.set_bind_group(0, &game.shadow_pass.bind_group, &[]);
     render_pass.set_vertex_buffer(1, renderer.scene_object_instances.slice(..));
 
     for (index, scene_object) in scene.scene_objects.iter().enumerate() {
-        if let Some(render_mesh) = renderer.get_render_mesh(&scene_object.mesh_id) {
-            let vertex_buffer = renderer
-                .mesh_buffers
-                .get(&render_mesh.vertex_buffer_handle)
-                .unwrap();
-            let index_buffer = renderer
-                .mesh_buffers
-                .get(&render_mesh.index_buffer_handle)
-                .unwrap();
+        if let Some(mesh_component) = &scene_object.mesh_component {
+            if let Some(render_mesh) = renderer.get_render_mesh(&mesh_component.mesh_id) {
+                let vertex_buffer = renderer
+                    .mesh_buffers
+                    .get(&render_mesh.vertex_buffer_handle)
+                    .unwrap();
+                let index_buffer = renderer
+                    .mesh_buffers
+                    .get(&render_mesh.index_buffer_handle)
+                    .unwrap();
 
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(
-                render_mesh.index_offset as u32
-                    ..(render_mesh.index_offset + render_mesh.index_count) as u32,
-                render_mesh.vertex_offset as i32,
-                index as u32..(index + 1) as u32,
-            );
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(
+                    render_mesh.index_offset as u32
+                        ..(render_mesh.index_offset + render_mesh.index_count) as u32,
+                    render_mesh.vertex_offset as i32,
+                    index as u32..(index + 1) as u32,
+                );
+            }
         }
     }
 }

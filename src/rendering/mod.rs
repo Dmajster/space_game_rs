@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app::{Res, ResMut},
-    asset_server::{AssetServer, AssetId},
+    asset_server::{AssetId, AssetServer},
     scene::{Scene, SceneObjectId},
-    Id,
 };
 
 #[derive(Debug)]
@@ -110,9 +109,7 @@ pub struct Mesh {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Texture {
-
-}
+pub struct Texture {}
 
 #[derive(Debug, Default)]
 pub struct Material {}

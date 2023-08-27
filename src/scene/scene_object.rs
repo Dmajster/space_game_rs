@@ -1,7 +1,4 @@
-use crate::{
-    asset_server::AssetId,
-    components::{mesh_component::MeshComponent, Component},
-};
+use crate::components::{CameraComponent, LightComponent, MeshComponent};
 use glam::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -17,9 +14,10 @@ pub struct SceneObject {
     pub position: Vec3,
     pub rotation: Vec3,
     pub scale: Vec3,
-    pub mesh_id: AssetId,
 
-    pub components: Vec<Box<dyn Component>>,
+    pub mesh_component: Option<MeshComponent>,
+    pub light_component: Option<LightComponent>,
+    pub camera_component: Option<CameraComponent>,
 }
 
 impl SceneObject {
@@ -53,11 +51,12 @@ impl Default for SceneObject {
             id: SceneObjectId::new(),
             parent_id: SceneObjectId::EMPTY,
             children: vec![],
-            mesh_id: AssetId::EMPTY,
             position: Vec3::ZERO,
             rotation: Vec3::ZERO,
             scale: Vec3::ONE,
-            components: vec![Box::new(MeshComponent::default())],
+            mesh_component: None,
+            light_component: None,
+            camera_component: None,
         }
     }
 }

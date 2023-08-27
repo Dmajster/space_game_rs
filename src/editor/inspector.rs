@@ -1,23 +1,25 @@
 use egui::{DragValue, Ui, Window};
 
-use crate::app::App;
+use crate::app::{Res, ResMut};
+use crate::asset_server::AssetServer;
+use crate::components::{
+    draw_camera_component, draw_light_component, draw_mesh_component, CameraComponent,
+    LightComponent, MeshComponent,
+};
 use crate::editor::Editor;
 use crate::scene::SceneObjectId;
 use crate::Scene;
 
-pub trait EditorInspector {
-    fn draw(&mut self, ui: &mut Ui, app: &mut App);
-}
-
-pub fn update(app: &mut App) {
-    let context = app.get_resource::<egui::Context>().unwrap();
+pub fn update(
+    context: Res<egui::Context>,
+    editor: Res<Editor>,
+    scene: ResMut<Scene>,
+    asset_server: ResMut<AssetServer>,
+) {
     let context = context.get();
-
-    let editor = app.get_resource::<Editor>().unwrap();
     let editor = editor.get();
-
-    let scene = app.get_resource_mut::<Scene>().unwrap();
     let mut scene = scene.get_mut();
+    let mut asset_server = asset_server.get_mut();
 
     Window::new("Inspector")
         .min_width(512.0)
@@ -59,18 +61,40 @@ pub fn update(app: &mut App) {
 
             ui.separator();
 
-            for component in &mut sobj.components {
-                ui.heading(component.typetag_name());
-                ui.add_space(8.0);
-
-                component.draw(ui, app);
-
-                ui.separator();
+            if let Some(mesh_component) = &mut sobj.mesh_component {
+                draw_mesh_component(ui, mesh_component, &mut asset_server);
             }
 
-            // ui.heading("Mesh");
-            // ui.add_space(8.0);
+            if let Some(light_component) = &mut sobj.light_component {
+                draw_light_component(ui);
+            }
 
-            // ui.separator();
+            if let Some(camera_component) = &mut sobj.camera_component {
+                draw_camera_component(ui);
+            }
+        })
+        .unwrap()
+        .response
+        .context_menu(|ui| {
+            if editor.selected_scene_object_id != SceneObjectId::EMPTY {
+                ui_tree_context_menu(ui, &editor, &mut scene);
+            }
         });
+}
+
+fn ui_tree_context_menu(ui: &mut Ui, editor: &Editor, scene: &mut Scene) {
+    let scene_object = scene.get_mut(editor.selected_scene_object_id).unwrap();
+
+    if ui.button("add mesh").clicked() {
+        scene_object.mesh_component = Some(MeshComponent::default());
+        ui.close_menu();
+    }
+    if ui.button("add light").clicked() {
+        scene_object.light_component = Some(LightComponent::default());
+        ui.close_menu();
+    }
+    if ui.button("add camera").clicked() {
+        scene_object.camera_component = Some(CameraComponent::default());
+        ui.close_menu();
+    }
 }

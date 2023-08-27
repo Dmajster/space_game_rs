@@ -131,7 +131,7 @@ fn main() {
 
     // OLD EDITOR
     app.add_system(editor::scene_hierarchy::update);
-    app.add_raw_system(editor::inspector::update);
+    app.add_system(editor::inspector::update);
     app.add_system(editor::asset_browser::update);
     //
 
