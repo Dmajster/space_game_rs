@@ -82,27 +82,28 @@ var color_texture: texture_2d<f32>;
 fn fs_main(
     in: Fragment
 ) -> @location(0) vec4<f32> {
-    return textureSample(color_texture, texture_sampler, in.uv);
+       
     
-    
-    // var visibility = 0.0;
-    // let oneOverShadowDepthTextureSize = 1.0 / shadow_depth_texture_size;
-    // for (var y = -1; y <= 1; y++) {
-    //     for (var x = -1; x <= 1; x++) {
-    //         let offset = vec2<f32>(vec2(x, y)) * oneOverShadowDepthTextureSize;
+    var visibility = 0.0;
+    let oneOverShadowDepthTextureSize = 1.0 / shadow_depth_texture_size;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let offset = vec2<f32>(vec2(x, y)) * oneOverShadowDepthTextureSize;
 
-    //         visibility += textureSampleCompare(
-    //             shadow_depth_texture,
-    //             depth_sampler,
-    //             in.shadow_position.xy + offset,
-    //             in.shadow_position.z + shadow_comparison_bias
-    //         );
-    //     }
-    // }
-    // visibility /= 9.0;
+            visibility += textureSampleCompare(
+                shadow_depth_texture,
+                depth_sampler,
+                in.shadow_position.xy + offset,
+                in.shadow_position.z + shadow_comparison_bias
+            );
+        }
+    }
+    visibility /= 9.0;
 
-    // let lambert_factor = max(dot(normalize(vec3<f32>(2.0, 1.0, 1.0)), in.normal), 0.0);
-    // let lighting_factor = min(ambient_factor + visibility * lambert_factor, 1.0);
+    let lambert_factor = max(dot(normalize(vec3<f32>(2.0, 1.0, 1.0)), in.normal), 0.0);
+    let lighting_factor = min(ambient_factor + visibility * lambert_factor, 1.0);
 
-    // return vec4(lighting_factor * albedo, 1.0);
+    let color = textureSample(color_texture, texture_sampler, in.uv).xyz;
+
+    return vec4(lighting_factor * albedo * color, 1.0);
 }
