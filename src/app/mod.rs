@@ -83,7 +83,7 @@ impl App {
 pub trait SystemParameter {
     type BorrowedFromApp;
 
-    fn get_from_world(app: &App) -> Self::BorrowedFromApp;
+    fn get_from_app(app: &App) -> Self::BorrowedFromApp;
 }
 
 pub struct Res<T> {
@@ -112,7 +112,7 @@ where
 {
     type BorrowedFromApp = Res<T>;
 
-    fn get_from_world(app: &App) -> Self::BorrowedFromApp {
+    fn get_from_app(app: &App) -> Self::BorrowedFromApp {
         app.get_resource::<T>().expect(&format!(
             "failed getting resource: '{}' from world",
             type_name::<T>()
@@ -156,7 +156,7 @@ where
 {
     type BorrowedFromApp = ResMut<T>;
 
-    fn get_from_world(app: &App) -> Self::BorrowedFromApp {
+    fn get_from_app(app: &App) -> Self::BorrowedFromApp {
         app.get_resource_mut::<T>().expect(&format!(
             "failed getting resource {} from world",
             type_name::<T>()
@@ -185,7 +185,7 @@ macro_rules! impl_system_for_system_wrappers {
             $($T: SystemParameter<BorrowedFromApp = $T> + 'static,)+
         {
             fn execute(&self, app: &App) {
-                self.system.call(($($T::get_from_world(app),)+));
+                self.system.call(($($T::get_from_app(app),)+));
             }
         }
     };

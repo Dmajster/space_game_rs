@@ -1,3 +1,4 @@
+use ::image::{DynamicImage, Rgb32FImage, RgbImage};
 use glam::{Vec2, Vec3};
 use gltf::{accessor::DataType, buffer, image, texture, Semantic};
 use std::{mem, path::Path};
@@ -105,6 +106,7 @@ fn get_or_create_asset_texture(
 ) -> AssetId<Texture> {
     let index = texture.source().index();
     let image = images.get(index).unwrap();
+
     let name = if let Some(texture_name) = texture.name() {
         Some(format!("{}", texture_name.to_owned()))
     } else {
@@ -112,12 +114,15 @@ fn get_or_create_asset_texture(
     };
 
     let mut textures = asset_server.textures_mut();
+
+    let (wgpu_format, wgpu_bytes) = convert_to_valid_wgpu_format(&image);
+
     let asset = textures.add(
         Texture {
             width: image.width,
             height: image.height,
-            format: get_wgpu_texture_format(image.format),
-            bytes: image.pixels.clone(),
+            format: wgpu_format,
+            bytes: wgpu_bytes.clone(),
         },
         AssetMetadata { name },
     );
@@ -138,23 +143,34 @@ fn get_or_create_material(
 
     let color_texture_id =
         if let Some(info) = material.pbr_metallic_roughness().base_color_texture() {
-            Some(get_or_create_asset_texture(info.texture(), images, asset_server))
+            Some(get_or_create_asset_texture(
+                info.texture(),
+                images,
+                asset_server,
+            ))
         } else {
             None
         };
 
-    let normal_texture_id =
-        if let Some(normal_texture) = material.normal_texture() {
-            Some(get_or_create_asset_texture(normal_texture.texture(), images, asset_server))
-        } else {
-            None
-        };
+    let normal_texture_id = if let Some(normal_texture) = material.normal_texture() {
+        Some(get_or_create_asset_texture(
+            normal_texture.texture(),
+            images,
+            asset_server,
+        ))
+    } else {
+        None
+    };
 
     let metallic_roughness_texture_id = if let Some(info) = material
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
     {
-        Some(get_or_create_asset_texture(info.texture(), images, asset_server))
+        Some(get_or_create_asset_texture(
+            info.texture(),
+            images,
+            asset_server,
+        ))
     } else {
         None
     };
@@ -213,17 +229,26 @@ fn transmute_byte_vec<T>(mut bytes: Vec<u8>) -> Vec<T> {
     }
 }
 
-fn get_wgpu_texture_format(format: image::Format) -> wgpu::TextureFormat {
-    match format {
-        image::Format::R8 => wgpu::TextureFormat::R8Unorm,
-        image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
-        image::Format::R8G8B8 => unimplemented!(),
-        image::Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8Unorm,
-        image::Format::R16 => wgpu::TextureFormat::R16Unorm,
-        image::Format::R16G16 => wgpu::TextureFormat::Rg16Unorm,
+fn convert_to_valid_wgpu_format(image: &image::Data) -> (wgpu::TextureFormat, Vec<u8>) {
+    match image.format {
+        image::Format::R8 => (wgpu::TextureFormat::R8Unorm, image.pixels.clone()),
+        image::Format::R8G8 => (wgpu::TextureFormat::Rg8Unorm, image.pixels.clone()),
+        image::Format::R8G8B8 => {
+            let rgb = RgbImage::from_vec(image.width, image.height, image.pixels.clone()).unwrap();
+
+            (
+                wgpu::TextureFormat::Rgba8Unorm,
+                DynamicImage::ImageRgb8(rgb).into_rgba8().into_raw(),
+            )
+        }
+        image::Format::R8G8B8A8 => (wgpu::TextureFormat::Rgba8Unorm, image.pixels.clone()),
+        image::Format::R16 => (wgpu::TextureFormat::R16Unorm, image.pixels.clone()),
+        image::Format::R16G16 => (wgpu::TextureFormat::Rg16Unorm, image.pixels.clone()),
         image::Format::R16G16B16 => unimplemented!(),
-        image::Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Unorm,
+        image::Format::R16G16B16A16 => (wgpu::TextureFormat::Rgba16Unorm, image.pixels.clone()),
         image::Format::R32G32B32FLOAT => unimplemented!(),
-        image::Format::R32G32B32A32FLOAT => wgpu::TextureFormat::Rgba32Float,
+        image::Format::R32G32B32A32FLOAT => {
+            (wgpu::TextureFormat::Rgba32Float, image.pixels.clone())
+        }
     }
 }

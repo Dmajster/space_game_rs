@@ -73,19 +73,10 @@ pub fn draw(ui: &mut egui::Ui, transform: &mut TransformComponent) {
 
 impl TransformComponent {
     pub fn build_transform_matrix(&self) -> Mat4 {
-        let cr = (self.rotation.x.to_radians() * 0.5).cos();
-        let sr = (self.rotation.x.to_radians() * 0.5).sin();
-        let cp = (self.rotation.y.to_radians() * 0.5).cos();
-        let sp = (self.rotation.y.to_radians() * 0.5).sin();
-        let cy = (self.rotation.z.to_radians() * 0.5).cos();
-        let sy = (self.rotation.z.to_radians() * 0.5).sin();
-
-        let rotation = Quat::from_xyzw(
-            cr * cp * cy + sr * sp * sy,
-            sr * cp * cy - cr * sp * sy,
-            cr * sp * cy + sr * cp * sy,
-            cr * cp * sy - sr * sp * cy,
-        );
+        let mut rotation = Quat::IDENTITY;
+        rotation *= Quat::from_axis_angle(Vec3::X, self.rotation.x.to_radians());
+        rotation *= Quat::from_axis_angle(Vec3::Y, self.rotation.y.to_radians());
+        rotation *= Quat::from_axis_angle(Vec3::Z, self.rotation.z.to_radians());
 
         Mat4::from_scale_rotation_translation(self.scale, rotation, self.position)
     }

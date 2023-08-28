@@ -1,4 +1,7 @@
-use crate::{Id, components::camera::CameraComponent};
+use crate::{
+    components::{camera::CameraComponent, light::LightComponent},
+    Id,
+};
 use glam::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -14,7 +17,8 @@ pub mod scene_object;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Scene {
     pub scene_objects: Vec<SceneObject>,
-    pub camera_scene_object_id: SceneObjectId
+    pub camera_scene_object_id: SceneObjectId,
+    pub sun_scene_object_id: SceneObjectId,
 }
 
 impl Scene {
@@ -113,13 +117,24 @@ impl Scene {
 
 impl Default for Scene {
     fn default() -> Self {
-        let mut scene = Self { scene_objects: Default::default(), camera_scene_object_id: Default::default() };
+        let mut scene = Self {
+            scene_objects: Default::default(),
+            camera_scene_object_id: Default::default(),
+            sun_scene_object_id: Default::default(),
+        };
 
         let camera = scene.add_scene_object();
+        camera.transform_component.position = Vec3::new(0.0, 0.0, -2.0);
         camera.camera_component = Some(CameraComponent::default());
         camera.name = String::from("Camera");
-
         scene.camera_scene_object_id = camera.id();
+
+        let sun = scene.add_scene_object();
+        sun.transform_component.position = Vec3::new(5.0, 5.0, 5.0);
+        sun.light_component = Some(LightComponent::default());
+        sun.name = String::from("Sun");
+        scene.sun_scene_object_id = sun.id();
+
         scene
     }
 }

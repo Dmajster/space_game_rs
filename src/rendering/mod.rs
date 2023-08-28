@@ -162,6 +162,10 @@ pub struct RenderMesh {
 pub struct RenderMaterial {
     color_texture: wgpu::Texture,
     color_texture_view: wgpu::TextureView,
+    normal_texture: wgpu::Texture,
+    normal_texture_view: wgpu::TextureView,
+    metallic_roughness_texture: wgpu::Texture,
+    metallic_roughness_texture_view: wgpu::TextureView,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -273,9 +277,9 @@ impl<'renderer> Renderer<'renderer> {
 
         let filtrable_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("filtrable sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
@@ -324,28 +328,28 @@ impl<'renderer> Renderer<'renderer> {
                         },
                         count: None,
                     },
-                    // // Normal texture
-                    // wgpu::BindGroupLayoutEntry {
-                    //     binding: 2,
-                    //     visibility: wgpu::ShaderStages::FRAGMENT,
-                    //     ty: wgpu::BindingType::Texture {
-                    //         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    //         view_dimension: wgpu::TextureViewDimension::D2,
-                    //         multisampled: false,
-                    //     },
-                    //     count: None,
-                    // },
-                    // // Metallic roughness texture
-                    // wgpu::BindGroupLayoutEntry {
-                    //     binding: 3,
-                    //     visibility: wgpu::ShaderStages::FRAGMENT,
-                    //     ty: wgpu::BindingType::Texture {
-                    //         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    //         view_dimension: wgpu::TextureViewDimension::D2,
-                    //         multisampled: false,
-                    //     },
-                    //     count: None,
-                    // },
+                    // Normal texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // Metallic roughness texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
                 ],
             });
 
@@ -474,9 +478,9 @@ impl<'renderer> Renderer<'renderer> {
             let missing_render_material_ids = missing_render_material_ids.pop().unwrap();
             let material = materials.get(&missing_render_material_ids).unwrap();
 
-            let color_texture = {
-                if let Some(color_texture_id) = material.color_texture_id {
-                    let asset_texture = textures.get(&color_texture_id).unwrap();
+            let color_texture: Texture = {
+                if let Some(texture_id) = material.color_texture_id {
+                    let asset_texture = textures.get(&texture_id).unwrap();
 
                     asset_texture.asset.clone()
                 } else {
@@ -489,41 +493,48 @@ impl<'renderer> Renderer<'renderer> {
                 }
             };
 
-            let extents = wgpu::Extent3d {
-                width: color_texture.width,
-                height: color_texture.height,
-                depth_or_array_layers: 1,
+            let wgpu_color_texture = self.create_wgpu_texture(&color_texture);
+            let wgpu_color_texture_view =
+                wgpu_color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+            let normal_texture = {
+                if let Some(texture_id) = material.normal_texture_id {
+                    let asset_texture = textures.get(&texture_id).unwrap();
+
+                    asset_texture.asset.clone()
+                } else {
+                    Texture {
+                        width: 1,
+                        height: 1,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        bytes: vec![127, 127, 255, 255],
+                    }
+                }
             };
 
-            let wgpu_color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("color texture"),
-                size: extents,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: color_texture.format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
+            let wgpu_normal_texture = self.create_wgpu_texture(&normal_texture);
+            let wgpu_normal_texture_view =
+                wgpu_normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-            self.queue.write_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &wgpu_color_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &color_texture.bytes,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * extents.width),
-                    rows_per_image: Some(extents.height),
-                },
-                extents,
-            );
+            let metallic_roughness_texture = {
+                if let Some(texture_id) = material.metallic_roughness_texture_id {
+                    let asset_texture = textures.get(&texture_id).unwrap();
 
-            let color_texture_view =
-                wgpu_color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    asset_texture.asset.clone()
+                } else {
+                    Texture {
+                        width: 1,
+                        height: 1,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        bytes: vec![127, 127, 255, 255],
+                    }
+                }
+            };
+
+            let wgpu_metallic_roughness_texture =
+                self.create_wgpu_texture(&metallic_roughness_texture);
+            let wgpu_metallic_roughness_texture_view = wgpu_metallic_roughness_texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
 
             let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("material bind group"),
@@ -535,7 +546,17 @@ impl<'renderer> Renderer<'renderer> {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&color_texture_view),
+                        resource: wgpu::BindingResource::TextureView(&wgpu_color_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&wgpu_normal_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(
+                            &wgpu_metallic_roughness_texture_view,
+                        ),
                     },
                 ],
             });
@@ -544,11 +565,52 @@ impl<'renderer> Renderer<'renderer> {
                 material.id(),
                 RenderMaterial {
                     color_texture: wgpu_color_texture,
-                    color_texture_view,
+                    color_texture_view: wgpu_color_texture_view,
+                    normal_texture: wgpu_normal_texture,
+                    normal_texture_view: wgpu_normal_texture_view,
+                    metallic_roughness_texture: wgpu_metallic_roughness_texture,
+                    metallic_roughness_texture_view: wgpu_metallic_roughness_texture_view,
                     bind_group,
                 },
             );
         }
+    }
+
+    pub fn create_wgpu_texture(&self, texture: &Texture) -> wgpu::Texture {
+        let extents = wgpu::Extent3d {
+            width: texture.width,
+            height: texture.height,
+            depth_or_array_layers: 1,
+        };
+
+        let wgpu_color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("color texture"),
+            size: extents,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: texture.format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &wgpu_color_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &texture.bytes,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * extents.width),
+                rows_per_image: Some(extents.height),
+            },
+            extents,
+        );
+
+        wgpu_color_texture
     }
 }
 
