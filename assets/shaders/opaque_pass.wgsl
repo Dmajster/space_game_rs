@@ -53,11 +53,6 @@ fn vs_main(
     out.world_position = model_matrix * vec4<f32>(vertex.position, 1.0);
     out.clip_position = camera.view_proj * out.world_position;
     out.shadow_position = sun.view_proj * model_matrix * vec4<f32>(vertex.position, 1.0);
-    out.shadow_position = vec4<f32>(
-        out.shadow_position.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5),
-        out.shadow_position.z,
-        out.shadow_position.w
-    );
     out.normal = (model_matrix * vec4<f32>(vertex.normal, 0.0)).xyz;
     out.uv = vertex.uv;
     return out;
@@ -73,7 +68,6 @@ var shadow_depth_texture: texture_depth_2d;
 const PI = 3.14159;
 const shadow_depth_texture_size: f32 = 2048.0;
 const shadow_comparison_bias = 0.007;
-const Fdielectric = vec3<f32>(0.04, 0.04, 0.04);
 
 fn DistributionGGX(N: vec3<f32>, H: vec3<f32>, roughness: f32) -> f32 {
     let a = roughness * roughness;
@@ -124,29 +118,43 @@ fn fs_main(
     in: Fragment
 ) -> @location(0) vec4<f32> {
     let albedo = textureSample(color_texture, texture_sampler, in.uv).rgb;
-    let metalness = textureSample(metallic_roughness_texture, texture_sampler, in.uv).r;
-    let roughness = textureSample(metallic_roughness_texture, texture_sampler, in.uv).g;
+    let metallic_roughness = textureSample(metallic_roughness_texture, texture_sampler, in.uv);
+    let metallic = metallic_roughness.r;
+    let roughness = metallic_roughness.g;
 
-    // Outgoing light direction (vector from world-space fragment position to the "eye").
-    let Lo = normalize(camera.position.xyz - in.world_position.xyz);
+    let N = normalize(in.normal);
+    let V = normalize(camera.position.xyz - in.world_position.xyz);
 
-    // Get current fragment's normal and transform to world space.
-    // vec3 N = normalize(2.0 * texture(normalTexture, vin.texcoord).rgb - 1.0);
-	// N = normalize(vin.tangentBasis * N);
-    let N = in.normal;
+    var F0 = vec3<f32>(0.04, 0.04, 0.04);
+    F0 = mix(F0, albedo, metallic);
+	           
+    // reflectance equation
+    var Lo = vec3(0.0);
 
-	// Angle between surface normal and outgoing light direction.
-	let cosLo = max(0.0, dot(N, Lo));
+    let L = normalize(sun.position.xyz - in.world_position.xyz);
+    let H = normalize(V + L);
+    let distance = length(sun.position - in.world_position);
+    let attenuation = 1.0 / (distance * distance);
+    let radiance = sun.position.xyz * attenuation;        
+        
+    // cook-torrance brdf
+    let NDF = DistributionGGX(N, H, roughness);
+    let G = GeometrySmith(N, V, L, roughness);
+    let F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
-    // Specular reflection vector.
-    let Lr = 2.0 * cosLo * N - Lo;
+    let kS = F;
+    var kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
 
-    // Fresnel reflectance at normal incidence (for metals use albedo color).
-    let F0 = mix(Fdielectric, albedo, metalness);
+    let numerator = NDF * G * F;
+    let denominator = max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+    let specular = numerator / denominator;  
+            
+    // add to outgoing radiance Lo
+    let NdotL = max(dot(N, L), 0.0);
+    Lo += (kD * albedo / PI + specular) * radiance * NdotL;
 
-    var directLighting = vec3<f32>(0.0, 0.0, 0.0);
-
-    //https://github.com/Nadrin/PBR/blob/master/data/shaders/glsl/pbr_fs.glsl
+    let ambient = vec3(0.03) * albedo;
 
     // var visibility = 0.0;
     // let oneOverShadowDepthTextureSize = 1.0 / shadow_depth_texture_size;
@@ -164,10 +172,9 @@ fn fs_main(
     // }
     // visibility /= 9.0;
 
-    // let lambert_factor = max(dot(normalize(vec3<f32>(2.0, 1.0, 1.0)), in.normal), 0.0);
-    // let lighting_factor = min(ambient_factor + visibility * lambert_factor, 1.0);
+    var color = ambient + Lo;
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0 / 2.2));
 
-    // let color = textureSample(color_texture, texture_sampler, in.uv).xyz;
-
-    // return vec4(lighting_factor * albedo * color, 1.0);
+    return vec4<f32>(color, 1.0);
 }
