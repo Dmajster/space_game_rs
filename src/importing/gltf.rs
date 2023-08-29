@@ -1,5 +1,5 @@
-use ::image::{DynamicImage, Rgb32FImage, RgbImage};
-use glam::{Vec2, Vec3};
+use ::image::{DynamicImage, RgbImage};
+use glam::{Vec2, Vec3, Vec4, Vec4Swizzles};
 use gltf::{accessor::DataType, buffer, image, texture, Semantic};
 use std::{mem, path::Path};
 
@@ -49,7 +49,9 @@ where
 }
 
 fn create_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primitive<'_>) -> Mesh {
-    let positions = primitive
+    let mut mesh = Mesh::default();
+
+    mesh.positions = primitive
         .attributes()
         .find_map(|(semantic, accessor)| {
             if semantic == Semantic::Positions {
@@ -60,29 +62,7 @@ fn create_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primiti
         })
         .unwrap();
 
-    let normals = primitive
-        .attributes()
-        .find_map(|(semantic, accessor)| {
-            if semantic == Semantic::Normals {
-                Some(get_data_from_accessor::<Vec3>(&buffers, &accessor))
-            } else {
-                None
-            }
-        })
-        .unwrap();
-
-    let uvs = primitive
-        .attributes()
-        .find_map(|(semantic, accessor)| {
-            if semantic == Semantic::TexCoords(0) {
-                Some(get_data_from_accessor::<Vec2>(&buffers, &accessor))
-            } else {
-                None
-            }
-        })
-        .unwrap();
-
-    let indices = match primitive.indices().unwrap().data_type() {
+    mesh.indices = match primitive.indices().unwrap().data_type() {
         DataType::U16 => get_data_from_accessor::<u16>(&buffers, &primitive.indices().unwrap())
             .into_iter()
             .map(|index| index as u32)
@@ -91,12 +71,101 @@ fn create_primitive(buffers: &Vec<buffer::Data>, primitive: &gltf::mesh::Primiti
         _ => todo!(),
     };
 
-    Mesh {
-        positions,
-        normals,
-        uvs,
-        indices,
+    mesh.uvs = primitive
+        .attributes()
+        .find_map(|(semantic, accessor)| {
+            if semantic == Semantic::TexCoords(0) {
+                Some(get_data_from_accessor::<Vec2>(&buffers, &accessor))
+            } else {
+                None
+            }
+        })
+        .unwrap_or(vec![Vec2::ZERO; mesh.positions.len()]);
+
+    //TODO: encode normals, tangents and bitangents into qtangents (https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/)
+    mesh.normals = primitive
+        .attributes()
+        .find_map(|(semantic, accessor)| {
+            if semantic == Semantic::Normals {
+                Some(get_data_from_accessor::<Vec3>(&buffers, &accessor))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| create_normals(&mesh));
+
+    let encoded_tangents = primitive.attributes().find_map(|(semantic, accessor)| {
+        if semantic == Semantic::Tangents {
+            Some(get_data_from_accessor::<Vec4>(&buffers, &accessor))
+        } else {
+            None
+        }
+    });
+
+    if let Some(encoded_tangents) = encoded_tangents {
+        mesh.bitangents = mesh
+            .normals
+            .iter()
+            .zip(encoded_tangents.iter())
+            .map(|(normal, encoded_tangent)| {
+                normal.cross(encoded_tangent.xyz() * encoded_tangent.w.signum())
+            })
+            .collect::<Vec<_>>();
+
+        mesh.tangents = encoded_tangents
+            .into_iter()
+            .map(|encoded_tangent| encoded_tangent.xyz())
+            .collect::<Vec<_>>();
+    } else {
+        mesh.tangents = vec![Vec3::ZERO; mesh.positions.len()];
+        mesh.bitangents = vec![Vec3::ZERO; mesh.positions.len()];
+
+        mikktspace::generate_tangents(&mut mesh);
     }
+
+    mesh
+}
+
+fn create_normals(mesh: &Mesh) -> Vec<Vec3> {
+    let mut normal_hits = vec![0; mesh.positions.len()];
+
+    if mesh.indices.len() % 3 != 0 {
+        panic!("this was made to work with triangles");
+    }
+
+    let mut normals = vec![Vec3::ZERO; mesh.positions.len()];
+
+    for chunk in mesh.indices.chunks(3) {
+        let i0 = chunk[0] as usize;
+        let i1 = chunk[1] as usize;
+        let i2 = chunk[2] as usize;
+
+        let v0 = mesh.positions[i0];
+        let v1 = mesh.positions[i1];
+        let v2 = mesh.positions[i2];
+
+        // Calculate face normal
+        let n = (v1 - v0).cross(v2 - v0).normalize();
+
+        // Add it to each vertex normal
+        normals[i0] += n;
+        normals[i1] += n;
+        normals[i2] += n;
+
+        // Increment how many normals are in the vertex normal
+        normal_hits[i0] += 1;
+        normal_hits[i1] += 1;
+        normal_hits[i2] += 1;
+    }
+
+    // Divide by hit so we get an average of all the normals in the vertex normal
+    normals = normals
+        .into_iter()
+        .zip(normal_hits.into_iter())
+        .map(|(normal, hits)| normal / hits as f32)
+        .collect::<Vec<_>>();
+
+    normals
 }
 
 fn get_or_create_asset_texture(
@@ -250,5 +319,49 @@ fn convert_to_valid_wgpu_format(image: &image::Data) -> (wgpu::TextureFormat, Ve
         image::Format::R32G32B32A32FLOAT => {
             (wgpu::TextureFormat::Rgba32Float, image.pixels.clone())
         }
+    }
+}
+
+impl mikktspace::Geometry for Mesh {
+    fn num_faces(&self) -> usize {
+        self.indices.len() / 3
+    }
+
+    fn num_vertices_of_face(&self, face: usize) -> usize {
+        3
+    }
+
+    fn position(&self, face: usize, vert: usize) -> [f32; 3] {
+        let index = self.indices[face * 3 + vert] as usize;
+
+        self.positions[index].to_array()
+    }
+
+    fn normal(&self, face: usize, vert: usize) -> [f32; 3] {
+        let index = self.indices[face * 3 + vert] as usize;
+
+        self.normals[index].to_array()
+    }
+
+    fn tex_coord(&self, face: usize, vert: usize) -> [f32; 2] {
+        let index = self.indices[face * 3 + vert] as usize;
+
+        self.uvs[index].to_array()
+    }
+
+    fn set_tangent(
+        &mut self,
+        tangent: [f32; 3],
+        bi_tangent: [f32; 3],
+        _f_mag_s: f32,
+        _f_mag_t: f32,
+        _bi_tangent_preserves_orientation: bool,
+        face: usize,
+        vert: usize,
+    ) {
+        let index = self.indices[face * 3 + vert] as usize;
+
+        self.tangents[index] = tangent.into();
+        self.bitangents[index] = bi_tangent.into();
     }
 }

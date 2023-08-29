@@ -122,7 +122,18 @@ impl OpaqueRenderPass {
                 wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
+                    attributes: &wgpu::vertex_attr_array![
+                        // Position
+                        0 => Float32x3, 
+                        // Normal
+                        1 => Float32x3,
+                        // Tangent
+                        2 => Float32x3,
+                        // Bitangent
+                        3 => Float32x3,
+                        // Uv
+                        4 => Float32x2,
+                    ],
                 },
                 // Instance
                 wgpu::VertexBufferLayout {

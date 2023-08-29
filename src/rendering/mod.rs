@@ -97,6 +97,8 @@ use winit::window::Window;
 pub struct Vertex {
     pub position: Vec3,
     pub normal: Vec3,
+    pub tangent: Vec3,
+    pub bitangent: Vec3,
     pub uv: Vec2,
 }
 
@@ -104,6 +106,8 @@ pub struct Vertex {
 pub struct Mesh {
     pub positions: Vec<Vec3>,
     pub normals: Vec<Vec3>,
+    pub tangents: Vec<Vec3>,
+    pub bitangents: Vec<Vec3>,
     pub uvs: Vec<Vec2>,
     pub indices: Vec<u32>,
 }
@@ -427,17 +431,17 @@ impl<'renderer> Renderer<'renderer> {
             let missing_render_mesh_id = missing_render_mesh_ids.pop().unwrap();
             let mesh = meshes.get(&missing_render_mesh_id).unwrap();
 
-            let vertex_data = mesh
-                .positions
-                .iter()
-                .zip(mesh.normals.iter())
-                .zip(mesh.uvs.iter())
-                .map(|((position, normal), uv)| Vertex {
-                    position: *position,
-                    normal: *normal,
-                    uv: *uv,
-                })
-                .collect::<Vec<_>>();
+            let mut vertex_data = Vec::with_capacity(mesh.positions.len());
+
+            for i in 0..mesh.positions.len() {
+                vertex_data.push(Vertex {
+                    position: mesh.positions[i],
+                    normal: mesh.normals[i],
+                    tangent: mesh.tangents[i],
+                    bitangent: mesh.bitangents[i],
+                    uv: mesh.uvs[i],
+                });
+            }
 
             let vertex_buffer_handle = self.mesh_buffers.add(self.device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
