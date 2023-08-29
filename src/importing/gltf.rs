@@ -5,7 +5,7 @@ use std::{mem, path::Path};
 
 use crate::{
     asset_server::{asset_id::AssetId, AssetMetadata, AssetServer},
-    rendering::{Material, Mesh, Model, Texture},
+    rendering::{Material, MaterialProperties, Mesh, Model, Texture},
 };
 
 //TODO: Remove duplicates
@@ -231,10 +231,12 @@ fn get_or_create_material(
         None
     };
 
-    let metallic_roughness_texture_id = if let Some(info) = material
-        .pbr_metallic_roughness()
-        .metallic_roughness_texture()
-    {
+    let pbr = material.pbr_metallic_roughness();
+    let base_color_factor = pbr.base_color_factor().into();
+    let metallic_factor = pbr.metallic_factor();
+    let roughness_factor = pbr.roughness_factor();
+
+    let metallic_roughness_texture_id = if let Some(info) = pbr.metallic_roughness_texture() {
         Some(get_or_create_asset_texture(
             info.texture(),
             images,
@@ -250,6 +252,13 @@ fn get_or_create_material(
             color_texture_id,
             normal_texture_id,
             metallic_roughness_texture_id,
+            material_properties: MaterialProperties {
+                base_color_factor,
+                metallic_factor,
+                roughness_factor,
+                reflectance: 0.5,
+                padding0: 0.0,
+            },
         },
         AssetMetadata { name },
     );

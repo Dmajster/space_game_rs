@@ -142,6 +142,20 @@ pub struct Material {
     pub color_texture_id: Option<AssetId<Texture>>,
     pub normal_texture_id: Option<AssetId<Texture>>,
     pub metallic_roughness_texture_id: Option<AssetId<Texture>>, //TODO: split this into seperate textures
+
+    pub material_properties: MaterialProperties,
+}
+
+#[repr(C)]
+#[derive(
+    Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Serialize, Deserialize,
+)]
+pub struct MaterialProperties {
+    pub base_color_factor: Vec4,
+    pub metallic_factor: f32,
+    pub roughness_factor: f32,
+    pub reflectance: f32,
+    pub padding0: f32,
 }
 
 #[repr(C)]
@@ -164,12 +178,6 @@ pub struct RenderMesh {
 }
 
 pub struct RenderMaterial {
-    color_texture: wgpu::Texture,
-    color_texture_view: wgpu::TextureView,
-    normal_texture: wgpu::Texture,
-    normal_texture_view: wgpu::TextureView,
-    metallic_roughness_texture: wgpu::Texture,
-    metallic_roughness_texture_view: wgpu::TextureView,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -314,25 +322,24 @@ impl<'renderer> Renderer<'renderer> {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("material bind group layout"),
                 entries: &[
-                    // Sampler
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    // Sampler
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
                     // Color texture
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    // Normal texture
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -343,9 +350,20 @@ impl<'renderer> Renderer<'renderer> {
                         },
                         count: None,
                     },
-                    // Metallic roughness texture
+                    // Normal texture
                     wgpu::BindGroupLayoutEntry {
                         binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // Metallic roughness texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -540,24 +558,36 @@ impl<'renderer> Renderer<'renderer> {
             let wgpu_metallic_roughness_texture_view = wgpu_metallic_roughness_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
+            let material_properties_buffer =
+                self.device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("material properties buffer"),
+                        contents: bytemuck::cast_slice(&[material.material_properties]),
+                        usage: wgpu::BufferUsages::UNIFORM,
+                    });
+
             let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("material bind group"),
                 layout: &self.material_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::Sampler(&self.filtrable_sampler),
+                        resource: material_properties_buffer.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&wgpu_color_texture_view),
+                        resource: wgpu::BindingResource::Sampler(&self.filtrable_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&wgpu_normal_texture_view),
+                        resource: wgpu::BindingResource::TextureView(&wgpu_color_texture_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&wgpu_normal_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
                         resource: wgpu::BindingResource::TextureView(
                             &wgpu_metallic_roughness_texture_view,
                         ),
@@ -565,18 +595,8 @@ impl<'renderer> Renderer<'renderer> {
                 ],
             });
 
-            self.render_materials.insert(
-                material.id(),
-                RenderMaterial {
-                    color_texture: wgpu_color_texture,
-                    color_texture_view: wgpu_color_texture_view,
-                    normal_texture: wgpu_normal_texture,
-                    normal_texture_view: wgpu_normal_texture_view,
-                    metallic_roughness_texture: wgpu_metallic_roughness_texture,
-                    metallic_roughness_texture_view: wgpu_metallic_roughness_texture_view,
-                    bind_group,
-                },
-            );
+            self.render_materials
+                .insert(material.id(), RenderMaterial { bind_group });
         }
     }
 
