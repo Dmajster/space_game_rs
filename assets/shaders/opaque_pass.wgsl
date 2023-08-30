@@ -248,7 +248,7 @@ fn fs_main(
 
     let v = normalize(camera.position - in.position);
     var color = vec3<f32>(0.0, 0.0, 0.0);
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 2; i++) {
         if lights[i].ty == 0 {
             color += evaluate_directional_light(lights[i], v, n, perceptual_roughness, base_color, metallic);
         } else if lights[i].ty == 1 {

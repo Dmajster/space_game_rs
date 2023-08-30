@@ -11,6 +11,7 @@ use crate::{
 pub mod asset_browser;
 pub mod scene_hierarchy;
 pub mod inspector;
+pub mod debugger;
 
 pub struct Editor {
     selected_scene_object_id: SceneObjectId,

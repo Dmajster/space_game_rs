@@ -2,6 +2,7 @@
 #![feature(fn_traits)]
 #![feature(tuple_trait)]
 #![feature(variant_count)]
+#![feature(type_name_of_val)]
 
 use app::App;
 use asset_server::AssetServer;
@@ -134,6 +135,7 @@ fn main() {
     app.add_system(editor::scene_hierarchy::update);
     app.add_system(editor::inspector::update);
     app.add_system(editor::asset_browser::update);
+    app.add_system(editor::debugger::update);
     //
 
     app.add_resource(game);

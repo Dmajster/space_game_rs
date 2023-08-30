@@ -236,13 +236,17 @@ pub fn render(
             }
 
             let model = models.get(&model_component.model_id).unwrap();
-
+            
+            puffin_egui::puffin::profile_scope!("load model");
             for (mesh_id, material_id) in model.mesh_ids.iter().zip(model.material_ids.iter()) {
                 let render_mesh = renderer.get_render_mesh(mesh_id);
                 let render_material = renderer.get_render_material(material_id);
 
+                
+
                 if let Some(render_mesh) = render_mesh {
                     if let Some(render_material) = render_material {
+                        
                         let vertex_buffer = renderer
                             .mesh_buffers
                             .get(&render_mesh.vertex_buffer_handle)

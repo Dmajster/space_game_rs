@@ -71,7 +71,9 @@ impl App {
 
     pub fn execute(&mut self) {
         for system in &self.systems {
-            system.execute(&self)
+            puffin_egui::puffin::profile_scope!(system.get_debug_label());
+            
+            system.execute(&self);
         }
 
         for raw_system in self.raw_systems.clone() {
@@ -175,6 +177,8 @@ where
 
 pub trait System {
     fn execute(&self, app: &App);
+
+    fn get_debug_label(&self) -> &'static str;
 }
 
 macro_rules! impl_system_for_system_wrappers {
@@ -186,6 +190,10 @@ macro_rules! impl_system_for_system_wrappers {
         {
             fn execute(&self, app: &App) {
                 self.system.call(($($T::get_from_app(app),)+));
+            }
+
+            fn get_debug_label(&self) -> &'static str {
+                type_name::<S>()
             }
         }
     };

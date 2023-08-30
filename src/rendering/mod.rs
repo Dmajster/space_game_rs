@@ -18,10 +18,10 @@ use self::{
 };
 
 pub mod helpers;
+pub mod light;
 pub mod material;
 pub mod model;
 pub mod texture;
-pub mod light;
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -542,22 +542,36 @@ pub fn record(renderer: Res<Renderer>, rendering_recorder: ResMut<Option<Renderi
     let renderer = renderer.get();
     let mut rendering_recorder = rendering_recorder.get_mut();
 
-    let output = renderer.surface.get_current_texture().unwrap();
-    let view = output
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
+    let output = {
+        puffin_egui::puffin::profile_scope!("renderer.surface.get_current_texture()");
 
-    let encoder = renderer
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+        renderer.surface.get_current_texture().unwrap()
+    };
+
+    let view = {
+        puffin_egui::puffin::profile_scope!("output.texture.create_view()");
+
+        output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default())
+    };
+
+    let encoder = {
+        puffin_egui::puffin::profile_scope!("renderer.device.create_command_encoder()");
+        renderer
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            })
+    };
 
     *rendering_recorder = Some(RenderingRecorder {
         output,
         view,
         encoder,
     });
+
+    puffin_egui::puffin::profile_scope!("render record");
 }
 
 pub fn present(renderer: Res<Renderer>, rendering_recorder_2: ResMut<Option<RenderingRecorder>>) {
@@ -569,8 +583,10 @@ pub fn present(renderer: Res<Renderer>, rendering_recorder_2: ResMut<Option<Rend
         encoder,
     } = rendering_recorder_2.replace(None).unwrap();
 
+    puffin_egui::puffin::profile_scope!("render submit");
     renderer.queue.submit(iter::once(encoder.finish()));
 
+    puffin_egui::puffin::profile_scope!("render present");
     output.present();
 
     *rendering_recorder_2.get_mut() = None;
