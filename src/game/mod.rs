@@ -5,6 +5,7 @@ use wgpu::util::DeviceExt;
 
 pub mod opaque_pass;
 pub mod shadow_pass;
+pub mod z_pre_pass;
 
 use crate::{
     app::{Res, ResMut},
@@ -13,7 +14,9 @@ use crate::{
     scene::{scene_object::SceneObject, Scene},
 };
 
-use self::{opaque_pass::OpaqueRenderPass, shadow_pass::ShadowRenderPass};
+use self::{
+    opaque_pass::OpaqueRenderPass, shadow_pass::ShadowRenderPass, z_pre_pass::ZPreRenderPass,
+};
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -47,6 +50,7 @@ pub struct Game {
     pub global_bind_group: wgpu::BindGroup,
 
     // pub shadow_pass: ShadowRenderPass,
+    pub z_pre_pass: ZPreRenderPass,
     pub opaque_pass: OpaqueRenderPass,
 }
 
@@ -98,6 +102,7 @@ impl Game {
                 }],
             });
 
+        let z_pre_pass = ZPreRenderPass::new(renderer, &global_bind_group_layout);
         // let shadow_pass = ShadowRenderPass::new(renderer, &lights_storage_buffer);
         let opaque_pass =
             OpaqueRenderPass::new(renderer, &global_bind_group_layout, &lights_storage_buffer);
@@ -109,6 +114,7 @@ impl Game {
             global_bind_group_layout,
             global_bind_group,
             // shadow_pass,
+            z_pre_pass,
             opaque_pass,
         }
     }
@@ -174,9 +180,7 @@ pub fn update(
         })
         .collect::<Vec<_>>();
 
-    renderer.queue.write_buffer(
-        &app.lights_storage_buffer,
-        0,
-        bytemuck::cast_slice(&lights),
-    );
+    renderer
+        .queue
+        .write_buffer(&app.lights_storage_buffer, 0, bytemuck::cast_slice(&lights));
 }

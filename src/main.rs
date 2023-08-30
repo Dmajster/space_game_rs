@@ -146,6 +146,7 @@ fn main() {
 
     app.add_resource::<Option<RenderingRecorder>>(None);
     app.add_system(rendering::record);
+    app.add_system(game::z_pre_pass::render);
     // app.add_system(game::shadow_pass::render);
     app.add_system(game::opaque_pass::render);
     app.add_system(ui::render);

@@ -1,11 +1,9 @@
-struct Camera {
+struct Sun {
     view_proj: mat4x4<f32>,
-    position: vec3<f32>,
-    p0: f32,
 }
 
 @group(0) @binding(0)
-var<uniform> camera: Camera;
+var<uniform> sun: Sun;
 
 struct Vertex {
     @location(0) position: vec3<f32>,
@@ -37,6 +35,6 @@ fn vs_main(
     );
 
     var out: Fragment;
-    out.clip_position = camera.view_proj * model_matrix * vec4<f32>(vertex.position, 1.0);
+    out.clip_position = sun.view_proj * model_matrix * vec4<f32>(vertex.position, 1.0);
     return out;
 }

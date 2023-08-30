@@ -153,8 +153,8 @@ impl OpaqueRenderPass {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: rendering::DEPTH_TEXTURE_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Greater,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Equal,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
@@ -215,8 +215,8 @@ pub fn render(
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &renderer.depth_texture_view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.0),
-                        store: true,
+                        load: wgpu::LoadOp::Load,
+                        store: false,
                     }),
                     stencil_ops: None,
                 }),
