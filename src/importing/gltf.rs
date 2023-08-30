@@ -5,7 +5,11 @@ use std::{mem, path::Path};
 
 use crate::{
     asset_server::{asset_id::AssetId, AssetMetadata, AssetServer},
-    rendering::{Material, MaterialProperties, Mesh, Model, Texture},
+    rendering::{
+        material::{Material, MaterialProperties},
+        model::{Mesh, Model},
+        texture::Texture,
+    },
 };
 
 //TODO: Remove duplicates

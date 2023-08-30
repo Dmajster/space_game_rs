@@ -2,7 +2,7 @@ use crate::{
     app::{Res, ResMut},
     asset_server::{asset_id::AssetId, AssetServer},
     game::Game,
-    rendering::{self, RenderInstance, Renderer, RenderingRecorder, Vertex},
+    rendering::{self, RenderInstance, Renderer, RenderingRecorder, model::Vertex},
     Scene,
 };
 
@@ -15,7 +15,7 @@ impl OpaqueRenderPass {
     pub fn new(
         renderer: &Renderer,
         global_bind_group_layout: &wgpu::BindGroupLayout,
-        sun_buffer: &wgpu::Buffer,
+        lights_buffer: &wgpu::Buffer,
     ) -> Self {
         let bind_group_layout =
             renderer
@@ -23,43 +23,43 @@ impl OpaqueRenderPass {
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("opaque pass bind group layout"),
                     entries: &[
-                        // Sun
+                        // Lights
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStages::all(),
                             ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
                                 min_binding_size: None,
                             },
                             count: None,
                         },
-                        // Depth sampler
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                            count: None,
-                        },
-                        // Shadow depth texture
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Depth,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                multisampled: false,
-                            },
-                            count: None,
-                        },
+                        // // Depth sampler
+                        // wgpu::BindGroupLayoutEntry {
+                        //     binding: 1,
+                        //     visibility: wgpu::ShaderStages::FRAGMENT,
+                        //     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                        //     count: None,
+                        // },
+                        // // Shadow depth texture
+                        // wgpu::BindGroupLayoutEntry {
+                        //     binding: 2,
+                        //     visibility: wgpu::ShaderStages::FRAGMENT,
+                        //     ty: wgpu::BindingType::Texture {
+                        //         sample_type: wgpu::TextureSampleType::Depth,
+                        //         view_dimension: wgpu::TextureViewDimension::D2,
+                        //         multisampled: false,
+                        //     },
+                        //     count: None,
+                        // },
                     ],
                 });
 
-        let shadow_depth_texture_view = &renderer
-            .render_pass_resources
-            .get("shadow depth")
-            .unwrap()
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        // let shadow_depth_texture_view = &renderer
+        //     .render_pass_resources
+        //     .get("shadow depth")
+        //     .unwrap()
+        //     .create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group = renderer
             .device
@@ -67,23 +67,23 @@ impl OpaqueRenderPass {
                 label: Some("opaque pass bind group"),
                 layout: &bind_group_layout,
                 entries: &[
-                    // Sun
+                    // Lights
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::Buffer(
-                            sun_buffer.as_entire_buffer_binding(),
+                            lights_buffer.as_entire_buffer_binding(),
                         ),
                     },
-                    // Depth sampler
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&renderer.comparison_sampler),
-                    },
-                    // Shadow depth texture
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&shadow_depth_texture_view),
-                    },
+                    // // Depth sampler
+                    // wgpu::BindGroupEntry {
+                    //     binding: 1,
+                    //     resource: wgpu::BindingResource::Sampler(&renderer.comparison_sampler),
+                    // },
+                    // // Shadow depth texture
+                    // wgpu::BindGroupEntry {
+                    //     binding: 2,
+                    //     resource: wgpu::BindingResource::TextureView(&shadow_depth_texture_view),
+                    // },
                 ],
             });
 

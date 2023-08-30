@@ -1,6 +1,7 @@
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(tuple_trait)]
+#![feature(variant_count)]
 
 use app::App;
 use asset_server::AssetServer;
@@ -145,7 +146,7 @@ fn main() {
 
     app.add_resource::<Option<RenderingRecorder>>(None);
     app.add_system(rendering::record);
-    app.add_system(game::shadow_pass::render);
+    // app.add_system(game::shadow_pass::render);
     app.add_system(game::opaque_pass::render);
     app.add_system(ui::render);
     app.add_system(rendering::present);

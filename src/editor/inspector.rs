@@ -43,7 +43,7 @@ pub fn update(
             }
 
             if let Some(light_component) = &mut sobj.light_component {
-                components::light::draw(ui);
+                components::light::draw(ui, light_component);
             }
 
             if let Some(camera_component) = &mut sobj.camera_component {

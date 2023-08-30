@@ -1,3 +1,5 @@
+use std::mem;
+
 use glam::{Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
@@ -7,7 +9,7 @@ pub mod shadow_pass;
 use crate::{
     app::{Res, ResMut},
     asset_server::AssetServer,
-    rendering::Renderer,
+    rendering::{light::RenderLight, Renderer, MAX_LIGHTS_COUNT},
     scene::{scene_object::SceneObject, Scene},
 };
 
@@ -15,29 +17,12 @@ use self::{opaque_pass::OpaqueRenderPass, shadow_pass::ShadowRenderPass};
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SunUniform {
-    mvp: Mat4,
-    world_position: Vec4,
-}
-
-impl SunUniform {
-    pub fn update(&mut self, sun_scene_object: &SceneObject) {
-        let transform = &sun_scene_object.transform_component;
-        let projection = Mat4::orthographic_rh(-10.0, 10.0, -10.0, 10.0, 100.0, 0.1);
-
-        let view = Mat4::look_at_rh(transform.position, Vec3::ZERO, Vec3::Y);
-        self.mvp = projection * view;
-    }
-}
-
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
+pub struct CameraGpu {
     pub view_projection: Mat4,
     pub world_position: Vec4,
 }
 
-impl CameraUniform {
+impl CameraGpu {
     fn update(&mut self, camera_scene_object: &SceneObject) {
         self.view_projection = camera_scene_object
             .camera_component
@@ -53,40 +38,37 @@ impl CameraUniform {
 
 pub struct Game {
     // Move this to high level renderer
-    sun_uniform: SunUniform,
-    pub sun_buffer: wgpu::Buffer,
+    pub lights_storage_buffer: wgpu::Buffer,
 
-    camera_uniform: CameraUniform,
-    pub camera_buffer: wgpu::Buffer,
+    camera_uniform: CameraGpu,
+    pub camera_uniform_buffer: wgpu::Buffer,
 
     pub global_bind_group_layout: wgpu::BindGroupLayout,
     pub global_bind_group: wgpu::BindGroup,
 
-    pub shadow_pass: ShadowRenderPass,
+    // pub shadow_pass: ShadowRenderPass,
     pub opaque_pass: OpaqueRenderPass,
 }
 
 impl Game {
     pub fn new(renderer: &mut Renderer) -> Self {
-        let sun_uniform = SunUniform::default();
+        let lights_storage_buffer = renderer.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("lights storage buffer"),
+            size: MAX_LIGHTS_COUNT * mem::size_of::<RenderLight>() as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
-        let sun_buffer = renderer
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("shadow pass bind group sun buffer"),
-                contents: bytemuck::cast_slice(&[sun_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        let camera_uniform = CameraGpu::default();
 
-        let camera_uniform = CameraUniform::default();
-
-        let camera_buffer = renderer
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("renderer bind group camera buffer"),
-                contents: bytemuck::cast_slice(&[camera_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        let camera_uniform_buffer =
+            renderer
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("renderer bind group camera buffer"),
+                    contents: bytemuck::cast_slice(&[camera_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
 
         let global_bind_group_layout =
             renderer
@@ -112,21 +94,21 @@ impl Game {
                 layout: &global_bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
+                    resource: camera_uniform_buffer.as_entire_binding(),
                 }],
             });
 
-        let shadow_pass = ShadowRenderPass::new(renderer, &sun_buffer);
-        let opaque_pass = OpaqueRenderPass::new(renderer, &global_bind_group_layout, &sun_buffer);
+        // let shadow_pass = ShadowRenderPass::new(renderer, &lights_storage_buffer);
+        let opaque_pass =
+            OpaqueRenderPass::new(renderer, &global_bind_group_layout, &lights_storage_buffer);
 
         Self {
-            sun_uniform,
-            sun_buffer,
+            lights_storage_buffer,
             camera_uniform,
-            camera_buffer,
+            camera_uniform_buffer,
             global_bind_group_layout,
             global_bind_group,
-            shadow_pass,
+            // shadow_pass,
             opaque_pass,
         }
     }
@@ -150,27 +132,51 @@ pub fn update(
         app.camera_uniform.update(&camera_scene_object);
 
         renderer.queue.write_buffer(
-            &app.camera_buffer,
+            &app.camera_uniform_buffer,
             0,
             bytemuck::cast_slice(&[app.camera_uniform]),
         );
     }
 
-    if let Some(camera_scene_object) = scene.get(scene.camera_scene_object_id) {
-        app.camera_uniform.update(&camera_scene_object);
+    let lights = scene
+        .scene_objects
+        .iter()
+        .filter_map(|scene_object| {
+            if let Some(light_component) = &scene_object.light_component {
+                let direction = match light_component.ty {
+                    crate::components::light::LightType::DirectionalLight => {
+                        -scene_object.transform_component.position
+                    }
+                    crate::components::light::LightType::PointLight => Vec3::NEG_Y,
+                    crate::components::light::LightType::SpotLight => {
+                        let transform = scene_object.transform_component.build_transform_matrix();
+                        let (_, rotation, _) = transform.to_scale_rotation_translation();
 
-        renderer.queue.write_buffer(
-            &app.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[app.camera_uniform]),
-        );
-    }
+                        rotation * Vec3::Z
+                    }
+                };
 
-    if let Some(sun_scene_object) = scene.get(scene.sun_scene_object_id) {
-        app.sun_uniform.update(&sun_scene_object);
+                Some(RenderLight {
+                    ty: unsafe { mem::transmute(light_component.ty) },
+                    position: scene_object.transform_component.position,
+                    luminous_intensity: light_component.luminous_intensity,
+                    direction,
+                    inner_angle: light_component.inner_angle.to_radians(),
+                    color: light_component.color,
+                    outer_angle: light_component.outer_angle.to_radians(),
+                    falloff_radius: light_component.falloff_radius,
+                    unused0: 0.0,
+                    unused1: 0.0,
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
-        renderer
-            .queue
-            .write_buffer(&app.sun_buffer, 0, bytemuck::cast_slice(&[app.sun_uniform]));
-    }
+    renderer.queue.write_buffer(
+        &app.lights_storage_buffer,
+        0,
+        bytemuck::cast_slice(&lights),
+    );
 }

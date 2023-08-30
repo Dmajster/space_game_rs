@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_server::{asset_id::AssetId, AssetServer},
-    rendering::Model,
+    rendering::model::Model,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize)]

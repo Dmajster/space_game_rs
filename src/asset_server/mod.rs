@@ -1,5 +1,10 @@
+use crate::rendering::{
+    material::Material,
+    model::{Mesh, Model},
+    texture::Texture,
+};
+
 use self::asset_id::AssetId;
-use crate::rendering::{Material, Mesh, Model, Texture};
 use serde::{Deserialize, Serialize};
 use std::{
     any::type_name,

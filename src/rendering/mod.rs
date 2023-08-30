@@ -1,162 +1,27 @@
-use serde::{Deserialize, Serialize};
-
 use crate::{
     app::{Res, ResMut},
     asset_server::{asset_id::AssetId, AssetServer},
     scene::{Scene, SceneObjectId},
 };
 
-#[derive(Debug)]
-pub struct Handle<T> {
-    pub index: usize,
-    pub generation: usize,
-    _pd: PhantomData<T>,
-}
-
-impl<T> Handle<T> {
-    pub const EMPTY: Handle<T> = Handle {
-        index: usize::MAX,
-        generation: usize::MAX,
-        _pd: PhantomData,
-    };
-}
-
-impl<T> Default for Handle<T> {
-    fn default() -> Self {
-        Handle::EMPTY
-    }
-}
-
-impl<T> Clone for Handle<T> {
-    fn clone(&self) -> Self {
-        Self {
-            index: self.index.clone(),
-            generation: self.generation.clone(),
-            _pd: self._pd.clone(),
-        }
-    }
-}
-
-impl<T> Copy for Handle<T> {}
-
-#[derive(Debug)]
-pub struct Pool<T> {
-    objects: Vec<T>,
-    generations: Vec<usize>,
-}
-
-impl<T> Default for Pool<T> {
-    fn default() -> Self {
-        Self {
-            objects: Default::default(),
-            generations: Default::default(),
-        }
-    }
-}
-
-impl<T> Pool<T> {
-    pub fn add(&mut self, object: T) -> Handle<T> {
-        let index = self.objects.len();
-        self.objects.push(object);
-        self.generations.push(0);
-
-        Handle {
-            index,
-            generation: 0,
-            _pd: PhantomData,
-        }
-    }
-
-    pub fn get(&self, handle: &Handle<T>) -> Option<&T> {
-        if handle.index < self.objects.len() && handle.generation == self.generations[handle.index]
-        {
-            Some(&self.objects[handle.index])
-        } else {
-            None
-        }
-    }
-
-    pub fn get_mut(&mut self, handle: &Handle<T>) -> Option<&mut T> {
-        if handle.index < self.objects.len() && handle.generation == self.generations[handle.index]
-        {
-            Some(&mut self.objects[handle.index])
-        } else {
-            None
-        }
-    }
-}
-
 use egui::epaint::ahash::HashMap;
-use glam::{Vec2, Vec3, Vec4};
-use std::{cell::RefCell, collections::BTreeMap, iter, marker::PhantomData};
+use glam::Vec4;
+use std::{cell::RefCell, collections::BTreeMap, iter};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    pub position: Vec3,
-    pub normal: Vec3,
-    pub tangent: Vec3,
-    pub bitangent: Vec3,
-    pub uv: Vec2,
-}
+use self::{
+    helpers::Pool,
+    material::{Material, RenderMaterial},
+    model::{Mesh, RenderMesh, Vertex},
+    texture::Texture,
+};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Mesh {
-    pub positions: Vec<Vec3>,
-    pub normals: Vec<Vec3>,
-    pub tangents: Vec<Vec3>,
-    pub bitangents: Vec<Vec3>,
-    pub uvs: Vec<Vec2>,
-    pub indices: Vec<u32>,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Model {
-    pub mesh_ids: Vec<AssetId<Mesh>>,
-    pub material_ids: Vec<AssetId<Material>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Texture {
-    pub width: u32,
-    pub height: u32,
-    pub format: wgpu::TextureFormat,
-    pub bytes: Vec<u8>,
-}
-
-impl Default for Texture {
-    fn default() -> Self {
-        Self {
-            width: Default::default(),
-            height: Default::default(),
-            format: wgpu::TextureFormat::Rgba32Float,
-            bytes: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Material {
-    pub color_texture_id: Option<AssetId<Texture>>,
-    pub normal_texture_id: Option<AssetId<Texture>>,
-    pub metallic_roughness_texture_id: Option<AssetId<Texture>>, //TODO: split this into seperate textures
-
-    pub material_properties: MaterialProperties,
-}
-
-#[repr(C)]
-#[derive(
-    Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Serialize, Deserialize,
-)]
-pub struct MaterialProperties {
-    pub base_color_factor: Vec4,
-    pub metallic_factor: f32,
-    pub roughness_factor: f32,
-    pub reflectance: f32,
-    pub padding0: f32,
-}
+pub mod helpers;
+pub mod material;
+pub mod model;
+pub mod texture;
+pub mod light;
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -167,23 +32,11 @@ pub struct RenderInstance {
     pub model_matrix_3: Vec4,
 }
 
-#[derive(Default, Debug, Clone, Copy)]
-pub struct RenderMesh {
-    pub vertex_buffer_handle: Handle<wgpu::Buffer>,
-    pub vertex_offset: usize,
-    pub vertex_count: usize,
-    pub index_buffer_handle: Handle<wgpu::Buffer>,
-    pub index_offset: usize,
-    pub index_count: usize,
-}
-
-pub struct RenderMaterial {
-    pub bind_group: wgpu::BindGroup,
-}
-
 pub const DEPTH_TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 pub const SCENE_OBJECT_INSTANCES_BUFFER_SIZE: u64 = 20 * 1024 * 1024; //20MB
+
+pub const MAX_LIGHTS_COUNT: u64 = 100;
 
 // Rename this to low level renderer or gpu interface?
 pub struct Renderer<'renderer> {
@@ -253,6 +106,7 @@ impl<'renderer> Renderer<'renderer> {
         .unwrap();
 
         let surface_capabilities = surface.get_capabilities(&adapter);
+
         let surface_format = surface_capabilities
             .formats
             .iter()
@@ -268,6 +122,7 @@ impl<'renderer> Renderer<'renderer> {
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
         };
+
         surface.configure(&device, &surface_configuration);
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
