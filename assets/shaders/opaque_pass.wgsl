@@ -56,21 +56,20 @@ fn vs_main(
     var out: Fragment;
     out.position = (model_matrix * vec4<f32>(vertex.position, 1.0)).xyz;
     out.clip_position = camera.view_proj * model_matrix * vec4<f32>(vertex.position, 1.0);
-    out.normal = normalize((model_matrix * vec4<f32>(vertex.normal, 0.0)).xyz);
-    out.tangent = normalize((model_matrix * vec4<f32>(vertex.tangent, 0.0)).xyz);
-    out.bitangent = normalize((model_matrix * vec4<f32>(vertex.bitangent, 0.0)).xyz);
+    out.normal = (model_matrix * vec4<f32>(vertex.normal, 0.0)).xyz;
+    out.tangent = (model_matrix * vec4<f32>(vertex.tangent, 0.0)).xyz;
+    out.bitangent = (model_matrix * vec4<f32>(vertex.bitangent, 0.0)).xyz;
     out.uv = vertex.uv;
     return out;
 }
 
 struct Fragment {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) shadow_position: vec4<f32>,
-    @location(1) position: vec3<f32>,
-    @location(2) normal: vec3<f32>,
-    @location(3) tangent: vec3<f32>,
-    @location(4) bitangent: vec3<f32>,
-    @location(5) uv: vec2<f32>,
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) tangent: vec3<f32>,
+    @location(3) bitangent: vec3<f32>,
+    @location(4) uv: vec2<f32>,
 };
 
 // Fragment shader
