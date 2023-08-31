@@ -105,7 +105,7 @@ impl OpaqueRenderPass {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("opaque pass shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../assets/shaders/opaque_pass.wgsl").into(),
+                    include_str!("../../assets/shaders/opaque_render_pass.wgsl").into(),
                 ),
             });
 
@@ -237,12 +237,9 @@ pub fn render(
 
             let model = models.get(&model_component.model_id).unwrap();
             
-            puffin_egui::puffin::profile_scope!("load model");
             for (mesh_id, material_id) in model.mesh_ids.iter().zip(model.material_ids.iter()) {
                 let render_mesh = renderer.get_render_mesh(mesh_id);
                 let render_material = renderer.get_render_material(material_id);
-
-                
 
                 if let Some(render_mesh) = render_mesh {
                     if let Some(render_material) = render_material {

@@ -65,7 +65,7 @@ pub fn draw(ui: &mut egui::Ui, light_component: &mut LightComponent) {
         columns[1].add(
             DragValue::new(&mut light_component.luminous_intensity)
                 .speed(1.0)
-                .suffix("cd"),
+                .suffix(" (cd)"),
         );
     });
 

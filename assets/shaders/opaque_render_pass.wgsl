@@ -1,9 +1,9 @@
-// Vertex shader
+// Based on https://google.github.io/filament/Filament.md.html
 
 struct Camera {
     view_proj: mat4x4<f32>,
     position: vec3<f32>,
-    p0: f32,
+    exposure: f32,
 }
 
 struct Light {
@@ -256,6 +256,8 @@ fn fs_main(
             color += evaluate_spot_light(lights[i], in.position, v, n, perceptual_roughness, base_color, metallic);
         }
     }
+
+    color *= camera.exposure;
 
     return vec4<f32>(color, 1.0);
 }

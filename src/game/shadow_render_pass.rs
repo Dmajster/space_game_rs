@@ -83,7 +83,7 @@ impl ShadowRenderPass {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shadow pass shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../assets/shaders/shadow_pass.wgsl").into(),
+                    include_str!("../../assets/shaders/shadow_render_pass.wgsl").into(),
                 ),
             });
 

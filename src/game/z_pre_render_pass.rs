@@ -21,7 +21,7 @@ impl ZPreRenderPass {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("shadow pass shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../assets/shaders/z_pre_pass.wgsl").into(),
+                    include_str!("../../assets/shaders/z_pre_render_pass.wgsl").into(),
                 ),
             });
 

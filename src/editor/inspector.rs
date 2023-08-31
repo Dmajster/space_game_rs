@@ -47,7 +47,7 @@ pub fn update(
             }
 
             if let Some(camera_component) = &mut sobj.camera_component {
-                components::camera::draw(ui);
+                components::camera::draw(ui, camera_component);
             }
         })
         .unwrap()
