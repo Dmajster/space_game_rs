@@ -3,14 +3,33 @@ use std::{
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     marker::PhantomData,
+    mem,
     rc::Rc,
 };
 
-#[derive(Default)]
+#[repr(usize)]
+#[derive(Debug)]
+pub enum Stage {
+    Update,
+    RenderSetup,
+    RenderStart, //TODO: Replace with some system of barriers
+    Render,
+    RenderPresent, //TODO: Replace with some system of barriers
+    RenderCleanup,
+}
+
 pub struct App {
     resources: HashMap<TypeId, Rc<dyn Any>>,
-    systems: Vec<Rc<dyn System>>,
-    raw_systems: Vec<Rc<dyn Fn(&mut App)>>,
+    stage_system_groups: Vec<Vec<Rc<dyn System>>>,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            resources: Default::default(),
+            stage_system_groups: vec![vec![]; mem::variant_count::<Stage>()],
+        }
+    }
 }
 
 impl App {
@@ -50,34 +69,31 @@ impl App {
         })
     }
 
-    pub fn add_raw_system<S>(&mut self, system: S)
-    where
-        S: Fn(&mut App) + 'static,
-    {
-        self.raw_systems.push(Rc::new(system));
-    }
-
-    pub fn add_system<S, I>(&mut self, system: S)
+    pub fn add_system<S, I>(&mut self, stage: Stage, system: S)
     where
         S: Fn<I, Output = ()> + 'static,
         I: std::marker::Tuple + 'static,
         SystemWrapper<S, I>: System,
     {
-        self.systems.push(Rc::new(SystemWrapper {
+        let stage_index = stage as usize;
+
+        self.stage_system_groups[stage_index].push(Rc::new(SystemWrapper {
             system,
             _pd: PhantomData,
         }))
     }
 
     pub fn execute(&mut self) {
-        for system in &self.systems {
-            puffin_egui::puffin::profile_scope!(system.get_debug_label());
-            
-            system.execute(&self);
-        }
+        for (i, system_group) in self.stage_system_groups.iter().enumerate() {
+            let system_group_name = unsafe { format!("{:?}", mem::transmute::<usize, Stage>(i)) };
 
-        for raw_system in self.raw_systems.clone() {
-            (raw_system)(self);
+            puffin_egui::puffin::profile_function!(system_group_name);
+
+            for system in system_group {
+                puffin_egui::puffin::profile_scope!(system.get_debug_label());
+
+                system.execute(&self);
+            }
         }
     }
 }

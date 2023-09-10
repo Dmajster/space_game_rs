@@ -4,11 +4,11 @@
 #![feature(variant_count)]
 #![feature(type_name_of_val)]
 
-use app::App;
+use app::{App, Stage};
 use asset_server::AssetServer;
 use editor::Editor;
 use game::Game;
-use rendering::{Renderer, RenderingRecorder};
+use rendering::{light::Lights, Renderer, RenderingRecorder};
 use scene::Scene;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
@@ -84,7 +84,9 @@ fn main() {
     let editor = Editor::new();
     let asset_server = AssetServer::read_from_file_or_new(&asset_server::DEFAULT_PATH);
     let scene = Scene::read_from_file_or_new(&scene::DEFAULT_SCENE_PATH);
-    let game = Game::new(&mut renderer);
+
+    let lights = Lights::new(&renderer);
+    let game = Game::new(&mut renderer, &lights);
 
     let mut app = App::default();
 
@@ -103,7 +105,7 @@ fn main() {
         size_in_pixels: [window.inner_size().width, window.inner_size().height],
         pixels_per_point: 1.0,
     });
-    app.add_system(ui::update);
+    app.add_system(Stage::Update, ui::update);
     //
 
     // DOCKING EDITOR
@@ -128,18 +130,21 @@ fn main() {
 
     // RENDERER
     app.add_resource(renderer);
-    app.add_system(rendering::update_scene_object_transforms);
+    app.add_system(Stage::Update, rendering::update_scene_object_transforms);
+
+    app.add_resource(lights);
+    app.add_system(Stage::Update, rendering::light::update_lights);
     //
 
     // OLD EDITOR
-    app.add_system(editor::scene_hierarchy::update);
-    app.add_system(editor::inspector::update);
-    app.add_system(editor::asset_browser::update);
-    app.add_system(editor::debugger::update);
+    app.add_system(Stage::Update, editor::scene_hierarchy::update);
+    app.add_system(Stage::Update, editor::inspector::update);
+    app.add_system(Stage::Update, editor::asset_browser::update);
+    app.add_system(Stage::Update, editor::debugger::update);
     //
 
     app.add_resource(game);
-    app.add_system(game::update);
+    app.add_system(Stage::Update, game::update);
 
     app.add_resource(window);
     app.add_resource(editor);
@@ -147,13 +152,14 @@ fn main() {
     app.add_resource(scene);
 
     app.add_resource::<Option<RenderingRecorder>>(None);
-    app.add_system(rendering::record);
-    app.add_system(game::z_pre_render_pass::render);
+    app.add_system(Stage::RenderSetup, rendering::record);
+    app.add_system(Stage::RenderStart, game::z_pre_render_pass::render);
     // app.add_system(game::shadow_pass::render);
-    app.add_system(game::opaque_render_pass::render);
-    app.add_system(ui::render);
-    app.add_system(rendering::present);
-    app.add_system(ui::post_render);
+    app.add_system(Stage::Render, game::opaque_render_pass::render);
+    app.add_system(Stage::Render, ui::render);
+
+    app.add_system(Stage::RenderPresent,rendering::present);
+    app.add_system(Stage::RenderCleanup,ui::post_render);
 
     event_loop.run(move |event, _, control_flow| {
         let window = app.get_resource::<winit::window::Window>().unwrap();
